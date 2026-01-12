@@ -20,6 +20,69 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _resolve_include_path(base_dir: Path, ref: str, semester_root: Path) -> Path | None:
+    cleaned = (ref or "").strip().strip("{}")
+    if not cleaned:
+        return None
+
+    candidates: list[Path] = []
+    raw = base_dir / cleaned
+    candidates.append(raw)
+    if not raw.suffix:
+        candidates.append(raw.with_suffix(".tex"))
+
+    try:
+        semester_root_resolved = semester_root.resolve()
+    except OSError:
+        semester_root_resolved = semester_root
+
+    for cand in candidates:
+        try:
+            resolved = cand.resolve()
+        except OSError:
+            continue
+        if not resolved.is_file():
+            continue
+        try:
+            if not resolved.is_relative_to(semester_root_resolved):
+                continue
+        except AttributeError:  # py<3.9 fallback (not needed on 3.12, kept for safety)
+            if semester_root_resolved not in resolved.parents and resolved != semester_root_resolved:
+                continue
+        return resolved
+    return None
+
+
+def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None = None) -> str:
+    seen = seen or set()
+    try:
+        resolved = tex_path.resolve()
+    except OSError:
+        return ""
+    if resolved in seen:
+        return ""
+    seen.add(resolved)
+
+    try:
+        text = tex_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        text = tex_path.read_text(encoding="latin-1")
+
+    out: list[str] = []
+    for line in text.splitlines(keepends=True):
+        # Drop TeX's file terminator so pandoc doesn't stop mid-document when we inline.
+        if line.strip().lower() == r"\endinput":
+            continue
+        m = re.match(r"\s*\\(input|include)\{([^}]+)\}", line)
+        if m:
+            target = _resolve_include_path(tex_path.parent, m.group(2), semester_root)
+            if target:
+                out.append(_inline_inputs(target, semester_root, seen))
+                continue
+        out.append(line)
+    return "".join(out)
+
+
 def _restore_eqrefs_to_mathjax(html: str) -> str:
     """
     Pandoc expands \\eqref{label} into anchors such as
@@ -261,16 +324,16 @@ class Command(BaseCommand):
         if not tex_abs.exists():
             raise CommandError(f"TeX file not found: {tex_abs}")
 
-        checksum = sha256_file(tex_abs)
+        # Inline \\input / \\include so wrapper files still produce content.
+        full_tex = _inline_inputs(tex_abs, (Path(settings.LECTURE_MEDIA_ROOT) / fs_path))
+
+        checksum = hashlib.sha256(full_tex.encode("utf-8", errors="ignore")).hexdigest()
         if not force and series.tex_checksum == checksum and series.render_status == Series.RenderStatus.OK:
             self.stdout.write(f"Series {series.id}: up-to-date, skipping")
             return False
 
         # Read TeX; if it is a fragment (no \\begin{document}), wrap in a minimal doc
-        try:
-            raw_tex = tex_abs.read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            raw_tex = tex_abs.read_text(encoding="latin-1")
+        raw_tex = full_tex
 
         # Compatibility transforms for common Gold Mine LaTeX macros/environments.
         # Pandoc does not load .sty files, so these commands would otherwise be ignored and

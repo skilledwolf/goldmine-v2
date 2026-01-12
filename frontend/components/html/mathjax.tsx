@@ -10,6 +10,24 @@ type Props = {
   html: string;
   className?: string;
   seriesIdForAssets?: number;
+  style?: React.CSSProperties;
+  /**
+   * When false, keep MathJax equation counters across renders (useful when splitting one sheet into multiple blocks).
+   * Default: true (reset numbering per render).
+   */
+  resetCounters?: boolean;
+  /**
+    * Provide a stable key to reset counters only once per logical group.
+    * Example: counterGroup="preview-74" to share numbering across multiple blocks of one series.
+    */
+  counterGroup?: string;
+};
+
+type MathJaxGroupState = {
+  elements: Set<HTMLElement>;
+  resetCounters: boolean;
+  scheduled: boolean;
+  needsRun: boolean;
 };
 
 declare global {
@@ -32,6 +50,40 @@ declare global {
     };
     __gm_mathjax_configured?: boolean;
     __gm_mathjax_loading?: Promise<void>;
+    __gm_mathjax_groups?: Map<string, MathJaxGroupState>;
+  }
+}
+
+function transformSolutions(root: HTMLElement) {
+  const blockquotes = Array.from(root.querySelectorAll('blockquote'));
+  for (const bq of blockquotes) {
+    const firstP = bq.querySelector('p');
+    const strong = firstP?.querySelector('strong');
+    const label = strong?.textContent?.trim().replace(/\.$/, '').toLowerCase();
+    if (label !== 'solution') continue;
+
+    const details = document.createElement('details');
+    details.className = 'gm-solution';
+
+    const summary = document.createElement('summary');
+    summary.textContent = 'Solution';
+    details.appendChild(summary);
+
+    const nodes = Array.from(bq.childNodes);
+    nodes.forEach((node) => {
+      if (node === firstP) {
+        const clone = (node as HTMLElement).cloneNode(true) as HTMLElement;
+        const strongNode = clone.querySelector('strong');
+        if (strongNode) strongNode.remove();
+        if (clone.textContent?.trim()) {
+          details.appendChild(clone);
+        }
+        return;
+      }
+      details.appendChild(node.cloneNode(true));
+    });
+
+    bq.replaceWith(details);
   }
 }
 
@@ -43,7 +95,9 @@ async function ensureMathJaxReady() {
       if (!window.__gm_mathjax_configured) {
         window.__gm_mathjax_configured = true;
         window.MathJax = {
+          loader: { load: ['[tex]/ams'] },
           tex: {
+            packages: { '[+]': ['ams'] },
             inlineMath: [['\\(', '\\)'], ['$', '$']],
             displayMath: [['\\[', '\\]'], ['$$', '$$']],
             processEscapes: true,
@@ -89,7 +143,67 @@ async function ensureMathJaxReady() {
   await window.__gm_mathjax_loading;
 }
 
-export function MathJaxHTML({ html, className, seriesIdForAssets }: Props) {
+function compareDomOrder(a: HTMLElement, b: HTMLElement) {
+  if (a === b) return 0;
+  const pos = a.compareDocumentPosition(b);
+  if (pos & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+  if (pos & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+  return 0;
+}
+
+function getGroupState(name: string, resetCounters: boolean) {
+  const groups = (window.__gm_mathjax_groups = window.__gm_mathjax_groups || new Map());
+  let state = groups.get(name);
+  if (!state) {
+    state = { elements: new Set<HTMLElement>(), resetCounters, scheduled: false, needsRun: false };
+    groups.set(name, state);
+  } else {
+    state.resetCounters = state.resetCounters && resetCounters;
+  }
+  return state;
+}
+
+function scheduleGroupTypeset(name: string) {
+  const groups = window.__gm_mathjax_groups;
+  if (!groups) return;
+  const state = groups.get(name);
+  if (!state) return;
+
+  state.needsRun = true;
+  if (state.scheduled) return;
+  state.scheduled = true;
+
+  const runner = async () => {
+    try {
+      await ensureMathJaxReady();
+      // Run until no further invalidations are queued.
+      while (state.needsRun) {
+        state.needsRun = false;
+        const elements = Array.from(state.elements).filter((el) => el.isConnected);
+        if (elements.length === 0) continue;
+
+        const sorted = elements.sort(compareDomOrder);
+        window.MathJax?.typesetClear?.(sorted);
+        if (state.resetCounters !== false) {
+          window.MathJax?.texReset?.();
+        }
+        await window.MathJax?.typesetPromise?.(sorted);
+      }
+    } catch (err) {
+      console.warn('MathJax group typeset error', err);
+    } finally {
+      state.scheduled = false;
+    }
+  };
+
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(runner);
+  } else {
+    Promise.resolve().then(runner);
+  }
+}
+
+export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCounters = true, counterGroup }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -97,84 +211,94 @@ export function MathJaxHTML({ html, className, seriesIdForAssets }: Props) {
     const load = async () => {
       try {
         if (!ref.current) return;
-        await ensureMathJaxReady();
-        if (!cancelled) {
-          window.MathJax?.typesetClear?.([ref.current]);
-          window.MathJax?.texReset?.();
 
-          // Important: let MathJax own this subtree. Avoid React clobbering MathJax DOM mutations.
-          ref.current.innerHTML = html;
+        // Important: let MathJax own this subtree. Avoid React clobbering MathJax DOM mutations.
+        ref.current.innerHTML = html;
 
-          const apiBase = getApiBase();
+        const apiBase = getApiBase();
 
-          // Pandoc emits <embed src="..."> for some includes (PDF/EPS). Convert those to <img>
-          // so we can rewrite them to the API asset endpoint and show a placeholder on failure.
-          const embeds = Array.from(ref.current.querySelectorAll('embed[src]'));
-          for (const embed of embeds) {
-            const originalSrc = embed.getAttribute('src') || '';
-            if (!originalSrc) continue;
+        // Pandoc emits <embed src="..."> for some includes (PDF/EPS). Convert those to <img>
+        // so we can rewrite them to the API asset endpoint and show a placeholder on failure.
+        const embeds = Array.from(ref.current.querySelectorAll('embed[src]'));
+        for (const embed of embeds) {
+          const originalSrc = embed.getAttribute('src') || '';
+          if (!originalSrc) continue;
 
-            const img = document.createElement('img');
-            for (const attr of Array.from(embed.attributes)) {
-              if (attr.name.toLowerCase() === 'src') continue;
-              img.setAttribute(attr.name, attr.value);
-            }
-            img.setAttribute('src', originalSrc);
-            embed.replaceWith(img);
+          const img = document.createElement('img');
+          for (const attr of Array.from(embed.attributes)) {
+            if (attr.name.toLowerCase() === 'src') continue;
+            img.setAttribute(attr.name, attr.value);
           }
-
-          const images = Array.from(ref.current.querySelectorAll('img[src]'));
-          for (const img of images) {
-            const originalSrc = img.getAttribute('src') || '';
-            if (!originalSrc) continue;
-
-            img.setAttribute('loading', 'lazy');
-            img.setAttribute('decoding', 'async');
-            if (!img.getAttribute('alt')) {
-              img.setAttribute('alt', 'figure');
-            }
-
-            if (!img.dataset.gmOriginalSrc) {
-              img.dataset.gmOriginalSrc = originalSrc;
-            }
-
-            if (apiBase && typeof seriesIdForAssets === 'number') {
-              if (
-                originalSrc.startsWith('http://') ||
-                originalSrc.startsWith('https://') ||
-                originalSrc.startsWith('data:') ||
-                originalSrc.startsWith('blob:')
-              ) {
-                continue;
-              }
-              const normalizedApiBase = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
-              const url = new URL(
-                `${normalizedApiBase}/files/${seriesIdForAssets}/asset`,
-                window.location.origin
-              );
-              url.searchParams.set('ref', originalSrc);
-              img.setAttribute('src', url.toString());
-            }
-
-            if (!img.dataset.gmMissingHandler) {
-              img.dataset.gmMissingHandler = '1';
-              img.addEventListener(
-                'error',
-                () => {
-                  const original = img.dataset.gmOriginalSrc || originalSrc;
-                  const placeholder = document.createElement('div');
-                  placeholder.className = 'gm-missing-asset';
-                  placeholder.textContent = `Missing image: ${original}`;
-                  img.insertAdjacentElement('afterend', placeholder);
-                  img.remove();
-                },
-                { once: true }
-              );
-            }
-          }
-
-          await window.MathJax?.typesetPromise?.([ref.current]);
+          img.setAttribute('src', originalSrc);
+          embed.replaceWith(img);
         }
+
+        const images = Array.from(ref.current.querySelectorAll('img[src]'));
+        for (const img of images) {
+          const originalSrc = img.getAttribute('src') || '';
+          if (!originalSrc) continue;
+
+          img.setAttribute('loading', 'lazy');
+          img.setAttribute('decoding', 'async');
+          if (!img.getAttribute('alt')) {
+            img.setAttribute('alt', 'figure');
+          }
+
+          if (!img.dataset.gmOriginalSrc) {
+            img.dataset.gmOriginalSrc = originalSrc;
+          }
+
+          if (apiBase && typeof seriesIdForAssets === 'number') {
+            if (
+              originalSrc.startsWith('http://') ||
+              originalSrc.startsWith('https://') ||
+              originalSrc.startsWith('data:') ||
+              originalSrc.startsWith('blob:')
+            ) {
+              continue;
+            }
+            const normalizedApiBase = apiBase.endsWith('/') ? apiBase.slice(0, -1) : apiBase;
+            const url = new URL(
+              `${normalizedApiBase}/files/${seriesIdForAssets}/asset`,
+              window.location.origin
+            );
+            url.searchParams.set('ref', originalSrc);
+            img.setAttribute('src', url.toString());
+          }
+
+          if (!img.dataset.gmMissingHandler) {
+            img.dataset.gmMissingHandler = '1';
+            img.addEventListener(
+              'error',
+              () => {
+                const original = img.dataset.gmOriginalSrc || originalSrc;
+                const placeholder = document.createElement('div');
+                placeholder.className = 'gm-missing-asset';
+                placeholder.textContent = `Missing image: ${original}`;
+                img.insertAdjacentElement('afterend', placeholder);
+                img.remove();
+              },
+              { once: true }
+            );
+          }
+        }
+
+        transformSolutions(ref.current);
+
+        if (counterGroup) {
+          const state = getGroupState(counterGroup, resetCounters !== false);
+          state.elements.add(ref.current);
+          scheduleGroupTypeset(counterGroup);
+          return;
+        }
+
+        await ensureMathJaxReady();
+        if (cancelled || !ref.current) return;
+        window.MathJax?.typesetClear?.([ref.current]);
+        if (resetCounters !== false) {
+          window.MathJax?.texReset?.();
+        }
+        await window.MathJax?.typesetPromise?.([ref.current]);
       } catch (err) {
         console.warn('MathJax load/typeset error', err);
       }
@@ -182,8 +306,18 @@ export function MathJaxHTML({ html, className, seriesIdForAssets }: Props) {
     load();
     return () => {
       cancelled = true;
+      if (counterGroup && ref.current) {
+        const groups = window.__gm_mathjax_groups;
+        const state = groups?.get(counterGroup);
+        state?.elements.delete(ref.current);
+        if (state && state.elements.size === 0) {
+          groups?.delete(counterGroup);
+        } else if (state) {
+          scheduleGroupTypeset(counterGroup);
+        }
+      }
     };
-  }, [html, seriesIdForAssets]);
+  }, [html, seriesIdForAssets, resetCounters, counterGroup]);
 
-  return <div ref={ref} className={className} />;
+  return <div ref={ref} className={className} style={style} />;
 }

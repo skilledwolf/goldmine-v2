@@ -1,11 +1,15 @@
 from typing import List, Optional
 from datetime import datetime
+from pathlib import Path
+
+from django.conf import settings
+from django.db.models import Prefetch, Q
+from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
 from ninja.security import django_auth
-from django.shortcuts import get_object_or_404
-from django.db.models import Prefetch, Q
-from .models import Lecture, SemesterGroup, Series, Exercise
+
+from .models import Exercise, Lecture, SemesterGroup, Series
 
 
 def require_staff(request):
@@ -104,6 +108,86 @@ class SeriesCreateSchema(Schema):
     tex_file: str = ""
     pdf_file: str = ""
     solution_file: str = ""
+
+
+class SeriesIssueSchema(Schema):
+    id: int
+    lecture_id: int
+    lecture_name: str
+    semester: str
+    year: int
+    number: int
+    title: str = ""
+    tex_file: str = ""
+    pdf_file: str = ""
+    solution_file: str = ""
+    render_status: str | None = None
+    html_rendered_at: datetime | None = None
+    issues: List[str]
+    fs_path: str = ""
+
+
+@api.get("/series/issues", response=List[SeriesIssueSchema])
+def list_series_issues(request):
+    """Staff-only helper to surface series with missing/failed assets for triage."""
+    require_staff(request)
+
+    series_qs = Series.objects.select_related("semester_group__lecture")
+    lecture_root = Path(settings.LECTURE_MEDIA_ROOT)
+    issues: list[SeriesIssueSchema] = []
+
+    for s in series_qs:
+        s_issues: list[str] = []
+
+        fs_path = (s.semester_group.fs_path or "").strip()
+        semester_root = lecture_root / fs_path if fs_path else None
+
+        def check_file(label: str, rel_path: str | None):
+            if not rel_path or not rel_path.strip():
+                s_issues.append(f"missing_{label}_path")
+                return
+            if not semester_root:
+                s_issues.append("missing_fs_path")
+                return
+            try:
+                full = (semester_root / rel_path).resolve()
+                if not full.is_file():
+                    s_issues.append(f"{label}_not_found")
+            except OSError:
+                s_issues.append(f"{label}_not_found")
+
+        check_file("tex", s.tex_file)
+        check_file("pdf", s.pdf_file)
+        check_file("solution", s.solution_file)
+
+        if s.render_status != Series.RenderStatus.OK:
+            s_issues.append("render_failed")
+        if s.render_status == Series.RenderStatus.OK and not (s.html_content or "").strip():
+            s_issues.append("html_empty")
+
+        if s_issues:
+            issues.append(
+                SeriesIssueSchema(
+                    id=s.id,
+                    lecture_id=s.semester_group.lecture.id,
+                    lecture_name=s.semester_group.lecture.long_name,
+                    semester=s.semester_group.semester,
+                    year=s.semester_group.year,
+                    number=s.number,
+                    title=s.title,
+                    tex_file=s.tex_file,
+                    pdf_file=s.pdf_file,
+                    solution_file=s.solution_file,
+                    render_status=s.render_status,
+                    html_rendered_at=s.html_rendered_at,
+                    issues=s_issues,
+                    fs_path=fs_path,
+                )
+            )
+
+    issues.sort(key=lambda x: (-len(x.issues), x.lecture_name.lower(), x.year, x.semester, x.number))
+    return issues
+
 
 @api.get("/lectures", response=List[LectureListSchema])
 def list_lectures(request, q: Optional[str] = None):

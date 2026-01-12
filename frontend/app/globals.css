@@ -126,7 +126,7 @@
 
   /* Make rendered TeX easier to read */
   .prose-exercise {
-    counter-reset: exercise figure;
+    counter-reset: var(--gm-counter-reset, exercise figure);
   }
   .prose-exercise p {
     text-align: justify;
@@ -188,6 +188,51 @@
     color: var(--foreground);
   }
 
+  /* Collapsible solutions & comments */
+  .prose-exercise details.gm-solution,
+  .prose-exercise details.gm-comments,
+  details.gm-comments {
+    border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+    border-radius: var(--radius);
+    padding: 0.9rem 1rem;
+    margin: 1rem 0;
+    background: color-mix(in oklch, var(--muted) 55%, transparent);
+    box-shadow: 0 6px 18px -10px color-mix(in oklch, var(--shadow) 45%, transparent);
+  }
+  .prose-exercise details.gm-solution summary,
+  .prose-exercise details.gm-comments summary,
+  details.gm-comments summary {
+    cursor: pointer;
+    font-weight: 700;
+    list-style: none;
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .prose-exercise details.gm-solution summary::-webkit-details-marker,
+  .prose-exercise details.gm-comments summary::-webkit-details-marker,
+  details.gm-comments summary::-webkit-details-marker {
+    display: none;
+  }
+  .prose-exercise details.gm-solution summary::before,
+  .prose-exercise details.gm-comments summary::before,
+  details.gm-comments summary::before {
+    content: "▸";
+    display: inline-block;
+    transition: transform 120ms ease;
+  }
+  .prose-exercise details.gm-solution[open] summary::before,
+  .prose-exercise details.gm-comments[open] summary::before,
+  details.gm-comments[open] summary::before {
+    transform: rotate(90deg);
+  }
+  .prose-exercise details.gm-solution > *:not(summary),
+  .prose-exercise details.gm-comments > *:not(summary),
+  details.gm-comments > *:not(summary) {
+    margin-top: 0.75rem;
+  }
+
   /* Better list styling for nested exercise parts */
   .prose-exercise ol,
   .prose-exercise ul {
@@ -196,18 +241,31 @@
     margin-bottom: 1rem;
   }
   .prose-exercise ol {
-    list-style-type: decimal;
+    list-style-type: lower-alpha;
+  }
+  .prose-exercise ol > li::marker {
+    content: "(" counter(list-item, lower-alpha) ") ";
+    font-variant-numeric: tabular-nums;
   }
   .prose-exercise ol ol {
-    list-style-type: lower-alpha;
+    list-style-type: lower-roman;
     margin-top: 0.35rem;
     margin-bottom: 0.35rem;
   }
+  .prose-exercise ol ol > li::marker {
+    content: "(" counter(list-item, lower-roman) ") ";
+  }
   .prose-exercise ol ol ol {
-    list-style-type: lower-roman;
+    list-style-type: decimal;
+  }
+  .prose-exercise ol ol ol > li::marker {
+    content: "(" counter(list-item, decimal) ") ";
   }
   .prose-exercise ol ol ol ol {
     list-style-type: upper-alpha;
+  }
+  .prose-exercise ol ol ol ol > li::marker {
+    content: "(" counter(list-item, upper-alpha) ") ";
   }
   .prose-exercise ul {
     list-style-type: disc;

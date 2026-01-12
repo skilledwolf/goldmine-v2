@@ -17,14 +17,6 @@ import {
     PanelLeftOpen,
 } from 'lucide-react';
 
-const sidebarItems = [
-    { name: 'Dashboard', href: '/', icon: LayoutDashboard },
-    { name: 'Lectures', href: '/lectures', icon: BookOpen },
-    { name: 'Search', href: '/search', icon: Search },
-    // { name: 'Exercises', href: '/exercises', icon: Dumbbell },
-    // { name: 'Settings', href: '/settings', icon: Settings },
-];
-
 export function Sidebar() {
     const pathname = usePathname();
     const router = useRouter();
@@ -84,6 +76,15 @@ export function Sidebar() {
     const apiBase = getApiBase().replace(/\/$/, '');
     const adminBase = apiBase.endsWith('/api') ? apiBase.slice(0, -4) : apiBase;
     const adminHref = `${adminBase}/admin/`;
+
+    const sidebarItems = [
+        { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+        { name: 'Lectures', href: '/lectures', icon: BookOpen },
+        { name: 'Search', href: '/search', icon: Search },
+        ...(isStaff ? [{ name: 'Issues', href: '/issues', icon: Shield }] : []),
+        // { name: 'Exercises', href: '/exercises', icon: Dumbbell },
+        // { name: 'Settings', href: '/settings', icon: Settings },
+    ];
 
     return (
         <div

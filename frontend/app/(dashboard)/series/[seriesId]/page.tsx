@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch, getApiBase } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MathJaxHTML } from '@/components/html/mathjax';
 import { PdfPreview } from '@/components/ui/pdf-preview';
@@ -88,9 +88,13 @@ const highlightLatex = (value: string) => {
 function SeriesPreviewTabs({
   series,
   currentUser,
+  exerciseHtmlMap = {},
+  renderCommentsForExercise,
 }: {
   series: Series;
   currentUser: { id: number; username: string; is_staff?: boolean } | null;
+  exerciseHtmlMap?: Record<number, string>;
+  renderCommentsForExercise?: (ex: Exercise, context?: 'list' | 'preview') => React.ReactNode;
 }) {
   const isStaff = !!currentUser?.is_staff;
   const base = getApiBase().replace(/\/$/, '');
@@ -121,6 +125,7 @@ function SeriesPreviewTabs({
     () => (texSource !== null ? highlightLatex(texSource) : null),
     [texSource]
   );
+  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
   useEffect(() => {
     // Keep the latest state in a ref so the fetch effect doesn't need to depend on
@@ -164,72 +169,142 @@ function SeriesPreviewTabs({
     void load();
   }, [hasTex, tab, texFile, texHref, texReloadToken]);
 
+  useEffect(() => {
+    if (tab !== 'html') return;
+    if (pendingScrollId === null) return;
+    if (!canShowHtmlPreview) return;
+    requestAnimationFrame(() => {
+      const el = document.getElementById(`exercise-${pendingScrollId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setPendingScrollId(null);
+      } else {
+        // Retry once shortly after render if the element isn't ready yet
+        setTimeout(() => {
+          const el2 = document.getElementById(`exercise-${pendingScrollId}`);
+          if (el2) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setPendingScrollId(null);
+        }, 60);
+      }
+    });
+  }, [tab, pendingScrollId, canShowHtmlPreview]);
+
+  const handleJump = (id: number) => {
+    if (tab !== 'html') setTab('html');
+    setPendingScrollId(id);
+  };
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Preview</CardTitle>
-        <div role="tablist" aria-label="Preview tabs" className="flex flex-wrap gap-2">
+    <div className="space-y-3">
+      <div role="tablist" aria-label="Preview tabs" className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={tab === 'html' ? 'secondary' : 'outline'}
+          role="tab"
+          aria-selected={tab === 'html'}
+          onClick={() => setTab('html')}
+        >
+          Exercises (HTML)
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={tab === 'pdf' ? 'secondary' : 'outline'}
+          role="tab"
+          aria-selected={tab === 'pdf'}
+          onClick={() => setTab('pdf')}
+        >
+          Exercises (PDF)
+        </Button>
+        {hasSolution && (
           <Button
             type="button"
             size="sm"
-            variant={tab === 'html' ? 'secondary' : 'outline'}
+            variant={tab === 'solution' ? 'secondary' : 'outline'}
             role="tab"
-            aria-selected={tab === 'html'}
-            onClick={() => setTab('html')}
+            aria-selected={tab === 'solution'}
+            onClick={() => setTab('solution')}
           >
-            Exercises (HTML)
+            Solutions (PDF)
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={tab === 'pdf' ? 'secondary' : 'outline'}
-            role="tab"
-            aria-selected={tab === 'pdf'}
-            onClick={() => setTab('pdf')}
-          >
-            Exercises (PDF)
-          </Button>
-          {hasSolution && (
-            <Button
-              type="button"
-              size="sm"
-              variant={tab === 'solution' ? 'secondary' : 'outline'}
-              role="tab"
-              aria-selected={tab === 'solution'}
-              onClick={() => setTab('solution')}
-            >
-              Solutions (PDF)
-            </Button>
-          )}
-          <Button
-            type="button"
-            size="sm"
-            variant={tab === 'tex' ? 'secondary' : 'outline'}
-            role="tab"
-            aria-selected={tab === 'tex'}
-            onClick={() => setTab('tex')}
-          >
-            Exercises (LaTeX)
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {tab === 'html' && (
-          <div className="space-y-4">
-            {canShowHtmlPreview ? (
-              <div className="space-y-2">
-                <MathJaxHTML
-                  key={`mj-${series.id}-${series.html_rendered_at || 'na'}`}
-                  html={series.html_content || ''}
-                  className="prose prose-sm prose-exercise dark:prose-invert max-w-none"
-                  seriesIdForAssets={series.id}
-                />
-                {series.render_status === 'ok' && series.html_rendered_at && (
-                  <div className="text-xs text-muted-foreground">
-                    Rendered from TeX on {new Date(series.html_rendered_at).toLocaleString()}
-                  </div>
-                )}
-              </div>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant={tab === 'tex' ? 'secondary' : 'outline'}
+          role="tab"
+          aria-selected={tab === 'tex'}
+          onClick={() => setTab('tex')}
+        >
+          Exercises (LaTeX)
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent>
+          {tab === 'html' && (
+            <div className="space-y-4">
+              {series.exercises.length > 0 && (
+                <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-xs">
+                  <span className="font-semibold text-muted-foreground">Jump to:</span>
+                  {series.exercises.map((ex) => (
+                    <button
+                      key={ex.id}
+                      type="button"
+                      className="rounded-md border border-input bg-background px-2 py-1 text-foreground/80 hover:border-primary/50"
+                      onClick={() => handleJump(ex.id)}
+                    >
+                      Ex {ex.number}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {canShowHtmlPreview ? (
+                exerciseHtmlMap && series.exercises.length > 0 ? (
+                  <div className="space-y-4">
+                  {series.exercises.map((ex) => {
+                    const html = exerciseHtmlMap[ex.id] || null;
+                    if (!html) return null;
+                    return (
+                      <div
+                        key={`preview-ex-${ex.id}`}
+                        id={`exercise-${ex.id}`}
+                        className="space-y-3 pt-1"
+                      >
+                        <MathJaxHTML
+                          key={`mj-${series.id}-${ex.id}-${series.html_rendered_at || 'na'}`}
+                          html={html}
+                          className="prose prose-sm prose-exercise dark:prose-invert max-w-none"
+                          style={{ counterReset: `exercise ${ex.number - 1} figure` }}
+                          counterGroup={`preview-${series.id}`}
+                          seriesIdForAssets={series.id}
+                        />
+                        {renderCommentsForExercise?.(ex, 'preview')}
+                      </div>
+                    );
+                  })}
+                  {series.render_status === 'ok' && series.html_rendered_at && (
+                    <div className="text-xs text-muted-foreground">
+                      Rendered from TeX on {new Date(series.html_rendered_at).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <MathJaxHTML
+                    key={`mj-${series.id}-${series.html_rendered_at || 'na'}`}
+                    html={series.html_content || ''}
+                    className="prose prose-sm prose-exercise dark:prose-invert max-w-none"
+                    seriesIdForAssets={series.id}
+                  />
+                  {series.render_status === 'ok' && series.html_rendered_at && (
+                    <div className="text-xs text-muted-foreground">
+                      Rendered from TeX on {new Date(series.html_rendered_at).toLocaleString()}
+                    </div>
+                  )}
+                </div>
+              )
             ) : (
               <div className="space-y-2">
                 <div className="text-sm text-muted-foreground">
@@ -335,8 +410,9 @@ function SeriesPreviewTabs({
             )}
           </div>
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -346,6 +422,9 @@ export default function SeriesDetailPage() {
 
   const { data: series, error: seriesError, isLoading } = useApiSWR<Series>(
     seriesId ? `/series/${seriesId}?include_html=1` : null
+  );
+  const { data: lectureSeries } = useApiSWR<Series[]>(
+    series && series.lecture_id ? `/lectures/${series.lecture_id}/series` : null
   );
   const { data: me } = useApiSWR<{ id: number; username: string; is_staff?: boolean } | { message: string }>('/auth/me');
   const errorMessage = seriesError instanceof Error ? seriesError.message : seriesError ? 'Failed to load series' : null;
@@ -357,11 +436,25 @@ export default function SeriesDetailPage() {
   const [editDrafts, setEditDrafts] = useState<Record<number, string>>({});
   const [replyTarget, setReplyTarget] = useState<Record<number, Comment | null>>({});
   const [commentSort, setCommentSort] = useState<'asc' | 'desc'>('asc');
-  const [copiedExerciseId, setCopiedExerciseId] = useState<number | null>(null);
+  const [exerciseHtml, setExerciseHtml] = useState<Record<number, string>>({});
   const exerciseIds = useMemo(
     () => series?.exercises.map((ex) => ex.id) ?? [],
     [series]
   );
+  const neighborSeries = useMemo(() => {
+    if (!series || !lectureSeries || lectureSeries.length === 0) {
+      return { prev: null as Series | null, next: null as Series | null };
+    }
+    // Restrict to the same semester/year as the current series
+    const sameTerm = lectureSeries.filter(
+      (s) => s.year === series.year && s.semester === series.semester
+    );
+    const sorted = sameTerm.slice().sort((a, b) => a.number - b.number);
+    const idx = sorted.findIndex((s) => s.id === series.id);
+    const prev = idx > 0 ? sorted[idx - 1] : null;
+    const next = idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null;
+    return { prev, next };
+  }, [lectureSeries, series]);
   const { pushToast } = useToast();
   const seriesCrumbs = useMemo(() => {
     if (!series) return null;
@@ -374,6 +467,252 @@ export default function SeriesDetailPage() {
   }, [series]);
 
   useBreadcrumbs(seriesCrumbs);
+
+  useEffect(() => {
+    if (!series || !series.html_content || series.render_status !== 'ok') {
+      setExerciseHtml({});
+      return;
+    }
+    if (typeof DOMParser === 'undefined') return;
+
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(series.html_content, 'text/html');
+      const headings = Array.from(doc.querySelectorAll('h2'));
+      const byExercise: Record<number, string> = {};
+
+      headings.forEach((h2, idx) => {
+        const container = document.createElement('div');
+        container.appendChild(h2.cloneNode(true));
+
+        let cursor: ChildNode | null = h2.nextSibling;
+        while (cursor) {
+          if (cursor.nodeType === Node.ELEMENT_NODE) {
+            const tag = (cursor as Element).tagName.toLowerCase();
+            const isNextExercise = tag === 'h2';
+            const isFootnotes = tag === 'section' && (cursor as Element).classList.contains('footnotes');
+            if (isNextExercise || isFootnotes) break;
+          }
+          container.appendChild(cursor.cloneNode(true));
+          cursor = cursor.nextSibling;
+        }
+
+        const target = series.exercises[idx];
+        if (target) {
+          byExercise[target.id] = container.innerHTML.trim();
+        }
+      });
+
+      setExerciseHtml(byExercise);
+    } catch (err) {
+      console.warn('Failed to extract per-exercise HTML from series preview', err);
+      setExerciseHtml({});
+    }
+  }, [series]);
+
+  const renderComments = (ex: Exercise, context: 'list' | 'preview' = 'list') => {
+    const commentAnchorId = `exercise-${ex.id}-comments-${context}`;
+    return (
+      <details id={commentAnchorId} className="gm-comments mt-3">
+        <summary>
+          Comments ({(comments[ex.id] || []).length})
+          <span className="ml-auto text-[11px] font-normal text-muted-foreground">
+            Click to toggle
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3">
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 px-2"
+              onClick={() => setCommentSort((s) => (s === 'asc' ? 'desc' : 'asc'))}
+            >
+              Sort: {commentSort === 'asc' ? 'Oldest → Newest' : 'Newest → Oldest'}
+            </Button>
+          </div>
+        {(() => {
+          const list = (comments[ex.id] || []).slice().sort((a, b) => {
+            const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+            return commentSort === 'asc' ? diff : -diff;
+          });
+          const indexMap = new Map<number, number>();
+          list.forEach((item, idx) => indexMap.set(item.id, idx + 1));
+          if (list.length === 0) {
+            return <div className="text-xs text-muted-foreground">No comments yet.</div>;
+          }
+          return list.map((c, idx) => {
+            const num = idx + 1;
+            const parentNum = c.parent_id ? indexMap.get(c.parent_id) : undefined;
+            const isReply = Boolean(c.parent_id);
+            return (
+              <div
+                key={c.id}
+                className={`rounded border bg-background px-3 py-2 text-xs shadow-[0_2px_6px_-4px_rgba(0,0,0,0.35)] ${
+                  isReply ? 'ml-4 border-l-4 border-primary/30' : ''
+                }`}
+              >
+                <div className="flex justify-between">
+                  <span className="font-medium">{c.username || `User ${c.user_id}`}</span>
+                  <span className="text-muted-foreground">
+                    #{num} • {new Date(c.created_at).toLocaleString()}
+                    {c.updated_at && c.updated_at !== c.created_at ? ` (edited ${new Date(c.updated_at).toLocaleString()})` : ''}
+                  </span>
+                </div>
+                {c.parent_username && !c.is_deleted && (
+                  <div className="text-[11px] text-muted-foreground mb-1">
+                    ↪ Reply to {c.parent_username}
+                    {parentNum ? ` (#${parentNum})` : c.parent_id ? ` (#${c.parent_id})` : ''}
+                  </div>
+                )}
+                {c.is_deleted ? (
+                  <p className="text-foreground/70 whitespace-pre-wrap italic">
+                    {(() => {
+                      const baseName = c.deleted_by_username || c.username || 'user';
+                      const timePart = c.deleted_at ? ` on ${new Date(c.deleted_at).toLocaleString()}` : '';
+                      const custom = (c.deleted_message || '').trim();
+                      // If custom already starts with "deleted by", ignore it to avoid duplication.
+                      const useCustom = custom && !custom.toLowerCase().startsWith('deleted by');
+                      return useCustom ? custom : `Deleted by ${baseName}${timePart}`;
+                    })()}
+                  </p>
+                ) : editDrafts[c.id] !== undefined ? (
+                  <div className="space-y-2">
+                    <textarea
+                      className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+                      rows={2}
+                      value={editDrafts[c.id]}
+                      onChange={(e) =>
+                        setEditDrafts((s) => ({ ...s, [c.id]: e.target.value }))
+                      }
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          setEditDrafts((s) => {
+                            const n = { ...s };
+                            delete n[c.id];
+                            return n;
+                          });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleUpdateComment(c.id, ex.id, editDrafts[c.id])}
+                        disabled={commentLoading[ex.id]}
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <p className="text-foreground/80 whitespace-pre-wrap leading-relaxed">{c.text}</p>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                      {!c.is_deleted && (
+                        <button
+                          type="button"
+                          className="underline decoration-dotted underline-offset-2"
+                          onClick={() =>
+                            setReplyTarget((s) => ({ ...s, [ex.id]: c }))
+                          }
+                        >
+                          Reply
+                        </button>
+                      )}
+                      {!c.is_deleted && c.user_id === currentUser?.id && (
+                        <button
+                          type="button"
+                          className="underline decoration-dotted underline-offset-2"
+                          onClick={() =>
+                            setEditDrafts((s) => ({ ...s, [c.id]: c.text }))
+                          }
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {currentUser?.is_staff && (
+                        <>
+                          <button
+                            type="button"
+                            className="underline decoration-dotted underline-offset-2"
+                            onClick={() => handleDeleteComment(c.id, ex.id, 'soft')}
+                          >
+                            Delete
+                          </button>
+                          <button
+                            type="button"
+                            className="underline decoration-dotted underline-offset-2"
+                            onClick={() => handleDeleteComment(c.id, ex.id, 'hard')}
+                          >
+                            Hard delete
+                          </button>
+                          {c.is_deleted && (
+                            <button
+                              type="button"
+                              className="underline decoration-dotted underline-offset-2"
+                              onClick={() => handleRestoreComment(c.id, ex.id)}
+                            >
+                              Restore
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          });
+        })()}
+        <div className="space-y-2 rounded-md border border-dashed border-muted-foreground/50 bg-background/80 px-3 py-2">
+          <div className="text-xs font-medium text-muted-foreground">Add a comment</div>
+          <textarea
+            className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
+            rows={3}
+            value={commentDrafts[ex.id] || ''}
+            onChange={(e) =>
+              setCommentDrafts((s) => ({ ...s, [ex.id]: e.target.value }))
+            }
+            placeholder="Share a hint, correction, or question…"
+          />
+          {commentErrors[ex.id] && (
+            <div className="text-xs text-destructive">{commentErrors[ex.id]}</div>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => handleAddComment(ex.id)}
+              disabled={commentLoading[ex.id]}
+            >
+              Post
+            </Button>
+            {replyTarget[ex.id] && (
+              <div className="text-xs text-muted-foreground">
+                Replying to {replyTarget[ex.id]?.username || `#${replyTarget[ex.id]?.id}`}
+                <button
+                  type="button"
+                  className="ml-2 text-primary underline-offset-2 hover:underline"
+                  onClick={() => setReplyTarget((s) => ({ ...s, [ex.id]: null }))}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        </div>
+      </details>
+    );
+  };
 
   const scrollToExercise = (exerciseId: number) => {
     const el = document.getElementById(`exercise-${exerciseId}`);
@@ -573,271 +912,39 @@ export default function SeriesDetailPage() {
         </Link>
       </div>
 
-      <SeriesPreviewTabs key={series.id} series={series} currentUser={currentUser} />
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            Exercises <span className="text-xs font-normal text-muted-foreground">({series.exercises.length})</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {series.exercises.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/50 px-3 py-2 text-xs">
-              <span className="font-semibold text-muted-foreground">Jump to:</span>
-              {series.exercises.map((ex) => (
-                <button
-                  key={ex.id}
-                  type="button"
-                  className="rounded-md border border-input bg-background px-2 py-1 text-foreground/80 hover:border-primary/50"
-                  onClick={() => scrollToExercise(ex.id)}
-                >
-                  Ex {ex.number}
-                </button>
-              ))}
-              <div className="ml-auto flex items-center gap-2">
-                <span className="text-muted-foreground">Comments</span>
-                <button
-                  type="button"
-                  className="rounded-md border border-input bg-background px-2 py-1 hover:border-primary/50"
-                  onClick={() => setCommentSort((s) => (s === 'asc' ? 'desc' : 'asc'))}
-                >
-                  Sort: {commentSort === 'asc' ? 'Oldest → Newest' : 'Newest → Oldest'}
-                </button>
-                <button
-                  type="button"
-                  className="rounded-md border border-input bg-background px-2 py-1 hover:border-primary/50"
-                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                >
-                  Back to top
-                </button>
-              </div>
-            </div>
+      {(neighborSeries.prev || neighborSeries.next) && (
+        <div className="flex items-center gap-3 text-sm">
+          {neighborSeries.prev ? (
+            <Link
+              href={`/series/${neighborSeries.prev.id}`}
+              className="rounded-md border bg-muted/60 px-3 py-1 hover:border-primary hover:text-primary"
+            >
+              ← Previous series (#{neighborSeries.prev.number})
+            </Link>
+          ) : (
+            <span className="rounded-md border border-dashed bg-muted/30 px-3 py-1 text-muted-foreground">No previous</span>
           )}
-
-          {series.exercises.length === 0 && (
-            <div className="text-sm text-muted-foreground">No exercises listed.</div>
+          {neighborSeries.next ? (
+            <Link
+              href={`/series/${neighborSeries.next.id}`}
+              className="rounded-md border bg-muted/60 px-3 py-1 hover:border-primary hover:text-primary"
+            >
+              Next series (#{neighborSeries.next.number}) →
+            </Link>
+          ) : (
+            <span className="rounded-md border border-dashed bg-muted/30 px-3 py-1 text-muted-foreground">No next</span>
           )}
-          {series.exercises.map((ex) => (
-            <div key={ex.id} id={`exercise-${ex.id}`} className="rounded-md border px-3 py-2">
-              <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold text-sm">Exercise {ex.number}</div>
-                <div className="flex items-center gap-2">
-                  {ex.title && <div className="text-xs text-muted-foreground">{ex.title}</div>}
-                  <button
-                    type="button"
-                    className="text-xs text-primary underline-offset-2 hover:underline"
-                    onClick={() => {
-                      const url = new URL(window.location.href);
-                      url.hash = `exercise-${ex.id}`;
-                      navigator.clipboard?.writeText(url.toString()).then(() => {
-                        setCopiedExerciseId(ex.id);
-                        setTimeout(() => setCopiedExerciseId(null), 1500);
-                      }).catch(() => {});
-                    }}
-                  >
-                    {copiedExerciseId === ex.id ? 'Copied!' : 'Copy link'}
-                  </button>
-                </div>
-              </div>
-              {ex.text_content && (
-                <p className="mt-1 whitespace-pre-wrap text-sm text-foreground/90">
-                  {ex.text_content}
-                </p>
-              )}
-              <div className="mt-3 space-y-2">
-                <div className="text-xs font-semibold text-muted-foreground">
-                  Comments ({(comments[ex.id] || []).length})
-                </div>
-                {(() => {
-                  const list = (comments[ex.id] || []).slice().sort((a, b) => {
-                    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-                    return commentSort === 'asc' ? diff : -diff;
-                  });
-                  const indexMap = new Map<number, number>();
-                  list.forEach((item, idx) => indexMap.set(item.id, idx + 1));
-                  if (list.length === 0) {
-                    return <div className="text-xs text-muted-foreground">No comments yet.</div>;
-                  }
-                  return list.map((c, idx) => {
-                    const num = idx + 1;
-                    const parentNum = c.parent_id ? indexMap.get(c.parent_id) : undefined;
-                    const isReply = Boolean(c.parent_id);
-                    return (
-                  <div
-                    key={c.id}
-                    className={`rounded border bg-muted/40 px-2 py-1 text-xs ${isReply ? 'ml-4 border-l-4 border-primary/20' : ''}`}
-                  >
-                    <div className="flex justify-between">
-                      <span className="font-medium">{c.username || `User ${c.user_id}`}</span>
-                      <span className="text-muted-foreground">
-                        #{num} • {new Date(c.created_at).toLocaleString()}
-                        {c.updated_at && c.updated_at !== c.created_at ? ` (edited ${new Date(c.updated_at).toLocaleString()})` : ''}
-                      </span>
-                    </div>
-                    {c.parent_username && !c.is_deleted && (
-                      <div className="text-[11px] text-muted-foreground mb-1">
-                        ↪ Reply to {c.parent_username}
-                        {parentNum ? ` (#${parentNum})` : c.parent_id ? ` (#${c.parent_id})` : ''}
-                      </div>
-                    )}
-                    {c.is_deleted ? (
-                      <p className="text-foreground/70 whitespace-pre-wrap italic">
-                        {(() => {
-                          const baseName = c.deleted_by_username || c.username || 'user';
-                          const timePart = c.deleted_at ? ` on ${new Date(c.deleted_at).toLocaleString()}` : '';
-                          const custom = (c.deleted_message || '').trim();
-                          // If custom already starts with "deleted by", ignore it to avoid duplication.
-                          const useCustom = custom && !custom.toLowerCase().startsWith('deleted by');
-                          return useCustom ? custom : `Deleted by ${baseName}${timePart}`;
-                        })()}
-                      </p>
-                    ) : editDrafts[c.id] !== undefined ? (
-                      <div className="space-y-2">
-                        <textarea
-                          className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
-                          rows={2}
-                          value={editDrafts[c.id]}
-                          onChange={(e) =>
-                            setEditDrafts((s) => ({ ...s, [c.id]: e.target.value }))
-                          }
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            onClick={() => {
-                              setEditDrafts((s) => {
-                                const n = { ...s };
-                                delete n[c.id];
-                                return n;
-                              });
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleUpdateComment(c.id, ex.id, editDrafts[c.id] || '')}
-                            disabled={commentLoading[ex.id]}
-                          >
-                            Save
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-foreground/90 whitespace-pre-wrap">{c.text}</p>
-                    )}
-                    {(currentUser && (currentUser.id === c.user_id || currentUser.is_staff)) && (
-                      <div className="mt-1 flex gap-2">
-                        {!c.is_deleted && currentUser.id === c.user_id && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2"
-                            onClick={() => setEditDrafts((s) => ({ ...s, [c.id]: c.text }))}
-                          >
-                            Edit
-                          </Button>
-                        )}
-                        {!c.is_deleted && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2"
-                            onClick={() => {
-                              setReplyTarget((s) => ({ ...s, [ex.id]: c }));
-                              setCommentDrafts((s) => ({ ...s, [ex.id]: s[ex.id] || '' }));
-                            }}
-                          >
-                            Reply
-                          </Button>
-                        )}
-                        {!c.is_deleted && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive h-7 px-2"
-                            onClick={() => handleDeleteComment(c.id, ex.id, 'soft')}
-                            disabled={commentLoading[ex.id]}
-                          >
-                            Delete
-                          </Button>
-                        )}
-                        {c.is_deleted && currentUser?.is_staff && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2"
-                            onClick={() => handleRestoreComment(c.id, ex.id)}
-                            disabled={commentLoading[ex.id]}
-                          >
-                            Restore
-                          </Button>
-                        )}
-                        {currentUser.is_staff && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="text-destructive h-7 px-2"
-                            onClick={() => handleDeleteComment(c.id, ex.id, 'hard')}
-                            disabled={commentLoading[ex.id]}
-                          >
-                            Delete permanently
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                    );
-                  });
-                })()}
-                {commentErrors[ex.id] && (
-                  <div className="text-xs text-destructive">{commentErrors[ex.id]}</div>
-                )}
-                <div className="space-y-2">
-                  {replyTarget[ex.id] && (
-                    <div className="flex items-center justify-between rounded border px-2 py-1 text-[11px] text-muted-foreground">
-                      <span>
-                        Replying to {replyTarget[ex.id]?.username || `User ${replyTarget[ex.id]?.user_id}`}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-primary"
-                        onClick={() => setReplyTarget((s) => ({ ...s, [ex.id]: null }))}
-                      >
-                        Cancel reply
-                      </button>
-                    </div>
-                  )}
-                  <textarea
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    rows={2}
-                    placeholder="Add a comment..."
-                    value={commentDrafts[ex.id] || ''}
-                    onChange={(e) =>
-                      setCommentDrafts((s) => ({ ...s, [ex.id]: e.target.value }))
-                    }
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => handleAddComment(ex.id)}
-                    disabled={commentLoading[ex.id]}
-                  >
-                    {commentLoading[ex.id] ? 'Posting…' : 'Post comment'}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+        </div>
+      )}
+
+      <SeriesPreviewTabs
+        key={series.id}
+        series={series}
+        currentUser={currentUser}
+        exerciseHtmlMap={exerciseHtml}
+        renderCommentsForExercise={(ex, context) => renderComments(ex, context)}
+      />
+
     </div>
   );
 }
