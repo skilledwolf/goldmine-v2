@@ -12,6 +12,7 @@ import { addRecentItem } from '@/lib/recent';
 import { useToast } from '@/components/ui/toast';
 import { useApiSWR } from '@/lib/swr';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
+import { MessageCircle, Edit2, Trash2, Reply, ChevronDown, ChevronRight, User, CornerDownRight, Send } from 'lucide-react';
 
 type Exercise = {
   id: number;
@@ -449,6 +450,7 @@ export default function SeriesDetailPage() {
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [commentErrors, setCommentErrors] = useState<Record<number, string | null>>({});
   const [commentLoading, setCommentLoading] = useState<Record<number, boolean>>({});
+  const [expandedComments, setExpandedComments] = useState<Record<number, boolean>>({});
   const currentUser = me && !('message' in me) ? me : null;
   const [editDrafts, setEditDrafts] = useState<Record<number, string>>({});
   const [replyTarget, setReplyTarget] = useState<Record<number, Comment | null>>({});
@@ -529,204 +531,272 @@ export default function SeriesDetailPage() {
 
   const renderComments = (ex: Exercise, context: 'list' | 'preview' = 'list') => {
     const commentAnchorId = `exercise-${ex.id}-comments-${context}`;
+    const exerciseComments = comments[ex.id] || [];
+    const commentCount = exerciseComments.length;
+    // Default to collapsed unless explicitly expanded
+    const isExpanded = expandedComments[ex.id] || false;
+
     return (
-      <details id={commentAnchorId} className="gm-comments mt-3">
-        <summary>
-          Comments ({(comments[ex.id] || []).length})
-          <span className="ml-auto text-[11px] font-normal text-muted-foreground">
-            Click to toggle
-          </span>
-        </summary>
-        <div className="mt-3 space-y-3">
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-7 px-2"
-              onClick={() => setCommentSort((s) => (s === 'asc' ? 'desc' : 'asc'))}
-            >
-              Sort: {commentSort === 'asc' ? 'Oldest → Newest' : 'Newest → Oldest'}
-            </Button>
+      <div id={commentAnchorId} className="mt-8 border-t border-border/50 pt-2">
+        <button
+          type="button"
+          onClick={() => setExpandedComments(s => ({ ...s, [ex.id]: !s[ex.id] }))}
+          className="w-full flex items-center justify-between py-4 hover:bg-muted/30 rounded-lg px-2 -mx-2 transition-colors group"
+        >
+          <div className="flex items-center gap-2">
+            {isExpanded ? <ChevronDown className="h-5 w-5 text-muted-foreground" /> : <ChevronRight className="h-5 w-5 text-muted-foreground" />}
+            <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground/80 group-hover:text-primary transition-colors">
+              <MessageCircle className="h-5 w-5" />
+              Discussion
+              {commentCount > 0 && <span className="text-sm font-normal text-muted-foreground">({commentCount})</span>}
+            </h3>
           </div>
-          {(() => {
-            const list = (comments[ex.id] || []).slice().sort((a, b) => {
-              const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-              return commentSort === 'asc' ? diff : -diff;
-            });
-            const indexMap = new Map<number, number>();
-            list.forEach((item, idx) => indexMap.set(item.id, idx + 1));
-            if (list.length === 0) {
-              return <div className="text-xs text-muted-foreground">No comments yet.</div>;
-            }
-            return list.map((c, idx) => {
-              const num = idx + 1;
-              const parentNum = c.parent_id ? indexMap.get(c.parent_id) : undefined;
-              const isReply = Boolean(c.parent_id);
-              return (
-                <div
-                  key={c.id}
-                  className={`rounded border bg-background px-3 py-2 text-xs shadow-[0_2px_6px_-4px_rgba(0,0,0,0.35)] ${isReply ? 'ml-4 border-l-4 border-primary/30' : ''
-                    }`}
-                >
-                  <div className="flex justify-between">
-                    <span className="font-medium">{c.username || `User ${c.user_id}`}</span>
-                    <span className="text-muted-foreground">
-                      #{num} • {new Date(c.created_at).toLocaleString()}
-                      {c.updated_at && c.updated_at !== c.created_at ? ` (edited ${new Date(c.updated_at).toLocaleString()})` : ''}
-                    </span>
+          {!isExpanded && commentCount === 0 && (
+            <span className="text-xs text-muted-foreground">Start a discussion</span>
+          )}
+          {!isExpanded && commentCount > 0 && (
+            <div className="flex -space-x-2 mr-2">
+              {/* Small preview of avatars if collapsed */}
+              {exerciseComments.slice(0, 3).map((c, i) => {
+                const colors = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500', 'bg-rose-500'];
+                const color = colors[c.user_id % colors.length];
+                return (
+                  <div key={c.id} className={`h-6 w-6 rounded-full ring-2 ring-background flex items-center justify-center text-[8px] font-bold text-white ${color}`}>
+                    {(c.username || 'U').slice(0, 2).toUpperCase()}
                   </div>
-                  {c.parent_username && !c.is_deleted && (
-                    <div className="text-[11px] text-muted-foreground mb-1">
-                      ↪ Reply to {c.parent_username}
-                      {parentNum ? ` (#${parentNum})` : c.parent_id ? ` (#${c.parent_id})` : ''}
-                    </div>
-                  )}
-                  {c.is_deleted ? (
-                    <p className="text-foreground/70 whitespace-pre-wrap italic">
-                      {(() => {
-                        const baseName = c.deleted_by_username || c.username || 'user';
-                        const timePart = c.deleted_at ? ` on ${new Date(c.deleted_at).toLocaleString()}` : '';
-                        const custom = (c.deleted_message || '').trim();
-                        // If custom already starts with "deleted by", ignore it to avoid duplication.
-                        const useCustom = custom && !custom.toLowerCase().startsWith('deleted by');
-                        return useCustom ? custom : `Deleted by ${baseName}${timePart}`;
-                      })()}
-                    </p>
-                  ) : editDrafts[c.id] !== undefined ? (
-                    <div className="space-y-2">
-                      <textarea
-                        className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
-                        rows={2}
-                        value={editDrafts[c.id]}
-                        onChange={(e) =>
-                          setEditDrafts((s) => ({ ...s, [c.id]: e.target.value }))
-                        }
-                      />
-                      <div className="flex gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          onClick={() => {
-                            setEditDrafts((s) => {
-                              const n = { ...s };
-                              delete n[c.id];
-                              return n;
-                            });
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => handleUpdateComment(c.id, ex.id, editDrafts[c.id])}
-                          disabled={commentLoading[ex.id]}
-                        >
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      <p className="text-foreground/80 whitespace-pre-wrap leading-relaxed">{c.text}</p>
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                        {!c.is_deleted && (
-                          <button
-                            type="button"
-                            className="underline decoration-dotted underline-offset-2"
-                            onClick={() =>
-                              setReplyTarget((s) => ({ ...s, [ex.id]: c }))
-                            }
-                          >
-                            Reply
-                          </button>
-                        )}
-                        {!c.is_deleted && c.user_id === currentUser?.id && (
-                          <button
-                            type="button"
-                            className="underline decoration-dotted underline-offset-2"
-                            onClick={() =>
-                              setEditDrafts((s) => ({ ...s, [c.id]: c.text }))
-                            }
-                          >
-                            Edit
-                          </button>
-                        )}
-                        {currentUser?.is_staff && (
-                          <>
-                            <button
-                              type="button"
-                              className="underline decoration-dotted underline-offset-2"
-                              onClick={() => handleDeleteComment(c.id, ex.id, 'soft')}
-                            >
-                              Delete
-                            </button>
-                            <button
-                              type="button"
-                              className="underline decoration-dotted underline-offset-2"
-                              onClick={() => handleDeleteComment(c.id, ex.id, 'hard')}
-                            >
-                              Hard delete
-                            </button>
-                            {c.is_deleted && (
-                              <button
-                                type="button"
-                                className="underline decoration-dotted underline-offset-2"
-                                onClick={() => handleRestoreComment(c.id, ex.id)}
-                              >
-                                Restore
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            });
-          })()}
-          <div className="space-y-2 rounded-md border border-dashed border-muted-foreground/50 bg-background/80 px-3 py-2">
-            <div className="text-xs font-medium text-muted-foreground">Add a comment</div>
-            <textarea
-              className="w-full rounded-md border border-input bg-background px-2 py-2 text-xs"
-              rows={3}
-              value={commentDrafts[ex.id] || ''}
-              onChange={(e) =>
-                setCommentDrafts((s) => ({ ...s, [ex.id]: e.target.value }))
-              }
-              placeholder="Share a hint, correction, or question…"
-            />
-            {commentErrors[ex.id] && (
-              <div className="text-xs text-destructive">{commentErrors[ex.id]}</div>
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => handleAddComment(ex.id)}
-                disabled={commentLoading[ex.id]}
-              >
-                Post
-              </Button>
-              {replyTarget[ex.id] && (
-                <div className="text-xs text-muted-foreground">
-                  Replying to {replyTarget[ex.id]?.username || `#${replyTarget[ex.id]?.id}`}
-                  <button
-                    type="button"
-                    className="ml-2 text-primary underline-offset-2 hover:underline"
-                    onClick={() => setReplyTarget((s) => ({ ...s, [ex.id]: null }))}
-                  >
-                    Cancel
-                  </button>
+                )
+              })}
+              {commentCount > 3 && (
+                <div className="h-6 w-6 rounded-full bg-muted ring-2 ring-background flex items-center justify-center text-[9px] font-medium text-muted-foreground">
+                  +{commentCount - 3}
                 </div>
               )}
             </div>
+          )}
+        </button>
+
+        {isExpanded && (
+          <div className="pb-6 animate-in slide-in-from-top-2 fade-in duration-200">
+            <div className="flex justify-end mb-4">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => setCommentSort((s) => (s === 'asc' ? 'desc' : 'asc'))}
+              >
+                Sort: {commentSort === 'asc' ? 'Oldest first' : 'Newest first'}
+              </Button>
+            </div>
+
+            <div className="space-y-6">
+              {(() => {
+                const list = exerciseComments.slice().sort((a, b) => {
+                  const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+                  return commentSort === 'asc' ? diff : -diff;
+                });
+                const indexMap = new Map<number, number>();
+                list.forEach((item, idx) => indexMap.set(item.id, idx + 1));
+
+                if (list.length === 0) {
+                  return (
+                    <div className="flex flex-col items-center justify-center py-8 text-center rounded-lg border border-dashed border-muted-foreground/20 bg-muted/5">
+                      <div className="h-10 w-10 rounded-full bg-muted flex items-center justify-center mb-3">
+                        <MessageCircle className="h-5 w-5 text-muted-foreground/50" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">No comments yet.</p>
+                      <p className="text-xs text-muted-foreground/70">Be the first to share a thought!</p>
+                    </div>
+                  );
+                }
+
+                return list.map((c, idx) => {
+                  const num = idx + 1;
+                  const parentNum = c.parent_id ? indexMap.get(c.parent_id) : undefined;
+                  const isReply = Boolean(c.parent_id);
+                  const authorInitials = (c.username || 'U').slice(0, 2).toUpperCase();
+                  // Deterministic color for avatar based on user_id
+                  const colors = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500', 'bg-rose-500'];
+                  const avatarColor = colors[c.user_id % colors.length];
+
+                  return (
+                    <div key={c.id} className={`group flex gap-4 ${isReply ? 'pl-8 md:pl-12' : ''}`}>
+                      {/* Avatar */}
+                      <div className="shrink-0">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm ring-2 ring-background ${avatarColor}`}>
+                          {authorInitials}
+                        </div>
+                        {isReply && <div className="h-full w-px bg-border/50 mx-auto mt-2 -mb-6" />}
+                      </div>
+
+                      <div className="flex-1 space-y-2">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold">{c.username || `User ${c.user_id}`}</span>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <span className="text-xs text-muted-foreground">{new Date(c.created_at).toLocaleString()}</span>
+                            {c.updated_at && c.updated_at !== c.created_at && (
+                              <span className="text-[10px] text-muted-foreground italic">(edited)</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Reply Context */}
+                        {c.parent_username && !c.is_deleted && (
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/30 px-2 py-1 rounded w-fit">
+                            <CornerDownRight className="h-3 w-3" />
+                            <span>Replying to <strong>{c.parent_username}</strong></span>
+                          </div>
+                        )}
+
+                        {/* Content */}
+                        <div className={`text-sm leading-relaxed ${c.is_deleted ? 'text-muted-foreground italic' : 'text-foreground/90'}`}>
+                          {c.is_deleted ? (
+                            <p>
+                              {(() => {
+                                const baseName = c.deleted_by_username || c.username || 'user';
+                                const custom = (c.deleted_message || '').trim();
+                                const useCustom = custom && !custom.toLowerCase().startsWith('deleted by');
+                                return useCustom ? custom : `Deleted by ${baseName}`;
+                              })()}
+                            </p>
+                          ) : editDrafts[c.id] !== undefined ? (
+                            <div className="space-y-3 p-3 rounded-lg border bg-card shadow-sm">
+                              <textarea
+                                className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[80px]"
+                                value={editDrafts[c.id]}
+                                onChange={(e) => setEditDrafts((s) => ({ ...s, [c.id]: e.target.value }))}
+                              />
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setEditDrafts((s) => {
+                                      const n = { ...s };
+                                      delete n[c.id];
+                                      return n;
+                                    });
+                                  }}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleUpdateComment(c.id, ex.id, editDrafts[c.id])}
+                                  disabled={commentLoading[ex.id]}
+                                >
+                                  Save Changes
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className="whitespace-pre-wrap">{c.text}</p>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        {!c.is_deleted && !editDrafts[c.id] && (
+                          <div className="flex items-center gap-4 pt-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                            <button
+                              className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+                              onClick={() => setReplyTarget((s) => ({ ...s, [ex.id]: c }))}
+                            >
+                              <Reply className="h-3.5 w-3.5" /> Reply
+                            </button>
+                            {c.user_id === currentUser?.id && (
+                              <button
+                                className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
+                                onClick={() => setEditDrafts((s) => ({ ...s, [c.id]: c.text }))}
+                              >
+                                <Edit2 className="h-3.5 w-3.5" /> Edit
+                              </button>
+                            )}
+                            {currentUser?.is_staff && (
+                              <>
+                                <button
+                                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+                                  onClick={() => handleDeleteComment(c.id, ex.id, 'soft')}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                                </button>
+                                <button
+                                  className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-destructive transition-colors"
+                                  onClick={() => handleDeleteComment(c.id, ex.id, 'hard')}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" /> Hard Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                        {/* Restore Action (Staff) */}
+                        {c.is_deleted && currentUser?.is_staff && (
+                          <button
+                            className="text-xs font-medium text-primary hover:underline"
+                            onClick={() => handleRestoreComment(c.id, ex.id)}
+                          >
+                            Restore Comment
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* Input Area */}
+            <div className="mt-8 flex gap-4">
+              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <User className="h-4 w-4 text-primary" />
+              </div>
+              <div className="flex-1 space-y-3">
+                {replyTarget[ex.id] && (
+                  <div className="flex items-center justify-between text-xs bg-muted/50 px-3 py-2 rounded-md border border-border/50">
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <CornerDownRight className="h-3.5 w-3.5" />
+                      Replying to <span className="font-semibold text-foreground">{replyTarget[ex.id]?.username}</span>
+                    </span>
+                    <button
+                      onClick={() => setReplyTarget((s) => ({ ...s, [ex.id]: null }))}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <span className="sr-only">Cancel reply</span>
+                      Cancel
+                    </button>
+                  </div>
+                )}
+                <div className="relative">
+                  <textarea
+                    className="w-full min-h-[100px] rounded-xl border border-input bg-card/50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm resize-y"
+                    placeholder={replyTarget[ex.id] ? "Write your reply..." : "Ask a question or share a thought..."}
+                    value={commentDrafts[ex.id] || ''}
+                    onChange={(e) => setCommentDrafts((s) => ({ ...s, [ex.id]: e.target.value }))}
+                  />
+                  <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                    {commentDrafts[ex.id] && (
+                      <Button
+                        size="icon"
+                        className="h-8 w-8 rounded-lg shadow-sm"
+                        onClick={() => handleAddComment(ex.id)}
+                        disabled={commentLoading[ex.id]}
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                {commentErrors[ex.id] && (
+                  <div className="text-xs font-medium text-destructive animate-in slide-in-from-top-1">
+                    {commentErrors[ex.id]}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </details>
+        )}
+      </div>
     );
   };
 

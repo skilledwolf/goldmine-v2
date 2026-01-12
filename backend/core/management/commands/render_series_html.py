@@ -531,15 +531,21 @@ def _tex_uses_ethuebung(tex: str) -> bool:
 
 
 def _tex_uses_ethuebung_solutions(tex: str) -> bool:
+    if re.search(r"\\UebungMakeSolutionsSheet\b", tex):
+        return True
     for match in re.finditer(
         r"\\usepackage\s*\[(.*?)\]\s*\{[^}]*ethuebung[^}]*\}",
         tex,
         re.IGNORECASE,
     ):
         opts = match.group(1)
-        if re.search(r"(^|,)\\s*sol\\s*(,|$)", opts, re.IGNORECASE):
+        if re.search(r"(^|,)\s*sol\s*(,|$)", opts, re.IGNORECASE):
             return True
     return False
+
+
+def _tex_has_solution_env(tex: str) -> bool:
+    return bool(re.search(r"\\begin\{(?:solution|loesung)\}", tex, re.IGNORECASE))
 
 
 class Command(BaseCommand):
@@ -615,7 +621,9 @@ class Command(BaseCommand):
         scan_tex = _strip_tex_comments(raw_tex)
         uses_ethuebung = _tex_uses_ethuebung(scan_tex)
         show_solutions = _tex_uses_ethuebung_solutions(scan_tex)
-        if not uses_ethuebung:
+        if _tex_has_solution_env(scan_tex):
+            show_solutions = True
+        elif not uses_ethuebung:
             if _tex_defines_command(scan_tex, "loesung") or _tex_defines_command(scan_tex, "solution"):
                 show_solutions = True
         raw_tex = _rewrite_solution_commands(raw_tex, show_solutions)
