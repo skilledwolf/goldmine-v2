@@ -467,12 +467,12 @@ def _tex_defines_command(tex: str, name: str) -> bool:
 
 
 def _tex_uses_ethuebung(tex: str) -> bool:
-    return bool(re.search(r"\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*ethuebung[^}]*\\}", tex, re.IGNORECASE))
+    return bool(re.search(r"\\\\usepackage\\s*(?:\\[(.*?)\\])?\\s*\\{[^}]*ethuebung[^}]*\\}", tex, re.IGNORECASE))
 
 
 def _tex_uses_ethuebung_solutions(tex: str) -> bool:
     for match in re.finditer(
-        r"\\usepackage\\s*\\[([^\\]]*)\\]\\s*\\{[^}]*ethuebung[^}]*\\}",
+        r"\\\\usepackage\\s*\\[(.*?)\\]\\s*\\{[^}]*ethuebung[^}]*\\}",
         tex,
         re.IGNORECASE,
     ):
