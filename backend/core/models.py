@@ -123,3 +123,31 @@ class UserComment(models.Model):
     
     def __str__(self):
         return f"Comment by {self.user} on {self.exercise}"
+
+
+class UploadJob(models.Model):
+    class Status(models.TextChoices):
+        UPLOADED = "uploaded", "Uploaded"
+        VALIDATED = "validated", "Validated"
+        IMPORTED = "imported", "Imported"
+        FAILED = "failed", "Failed"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    lecture = models.ForeignKey(Lecture, on_delete=models.CASCADE)
+    year = models.IntegerField()
+    semester = models.CharField(max_length=2, choices=SemesterGroup.SEMESTER_CHOICES)
+    professors = models.TextField(blank=True, default="")
+    assistants = models.TextField(blank=True, default="")
+    fs_path = models.CharField(max_length=1024, blank=True, default="")
+
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.UPLOADED)
+    source_filename = models.CharField(max_length=255, blank=True, default="")
+    upload_dir = models.CharField(max_length=1024, blank=True, default="")
+    report_json = models.JSONField(blank=True, null=True)
+    error_message = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"UploadJob #{self.id} ({self.lecture.name} {self.semester}{self.year})"

@@ -466,7 +466,9 @@ def add_series(request, semester_group_id: int, payload: SeriesCreateSchema):
 from .auth_api import router as auth_router
 from .files_api import files_router
 from .comments_api import router as comments_router
+from .uploads_api import uploads_router
 
 api.add_router("/auth", auth_router)
 api.add_router("/files", files_router)
 api.add_router("/comments", comments_router)
+api.add_router("/uploads", uploads_router)

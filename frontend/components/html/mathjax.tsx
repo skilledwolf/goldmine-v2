@@ -99,9 +99,9 @@ async function ensureMathJaxReady() {
       if (!window.__gm_mathjax_configured) {
         window.__gm_mathjax_configured = true;
         window.MathJax = {
-          loader: { load: ['[tex]/ams'] },
+          loader: { load: ['[tex]/ams', '[tex]/physics', '[tex]/braket', '[tex]/cancel', '[tex]/bbox'] },
           tex: {
-            packages: { '[+]': ['ams'] },
+            packages: { '[+]': ['ams', 'physics', 'braket', 'cancel', 'bbox'] },
             inlineMath: [['\\(', '\\)'], ['$', '$']],
             displayMath: [['\\[', '\\]'], ['$$', '$$']],
             processEscapes: true,
@@ -110,6 +110,30 @@ async function ensureMathJaxReady() {
               // MathJax doesn't support all of them; define them as no-ops/aliases.
               normalfont: '',
               AA: 'Å',
+              // Legacy math helpers
+              tr: '\\operatorname{tr}',
+              Tr: '\\operatorname{Tr}',
+              mathbbm: ['\\mathbb{#1}', 1],
+              id: '\\mathbb{1}',
+              unit: '\\mathbb{1}',
+              slashed: '\\not\\!',
+              // Common Dirac/QIT helpers (fallbacks even if physics/braket loaded)
+              ket: ['\\left|#1\\right\\rangle', 1],
+              bra: ['\\left\\langle#1\\right|', 1],
+              braket: ['\\left\\langle#1\\middle|#2\\right\\rangle', 2],
+              ketbra: ['\\left|#1\\right\\rangle\\!\\left\\langle#2\\right|', 2],
+              proj: ['\\left|#1\\right\\rangle\\!\\left\\langle#2\\right|', 2],
+              pure: ['\\left|#1\\right\\rangle\\!\\left\\langle#1\\right|', 1],
+              matrixel: ['\\left\\langle#1\\middle|#2\\middle|#3\\right\\rangle', 3],
+              avg: ['\\left\\langle#1\\right\\rangle', 1],
+              abs: ['\\left|#1\\right|', 1],
+              norm: ['\\left\\lVert#1\\right\\rVert', 1],
+              comm: ['\\left[#1,#2\\right]', 2],
+              anticom: ['\\left\\{#1,#2\\right\\}', 2],
+              sfrac: ['\\tfrac{#1}{#2}', 2],
+              Realpart: ['\\operatorname{Re}\\left(#1\\right)', 1],
+              Im: '\\operatorname{Im}',
+              Re: '\\operatorname{Re}',
             },
             // Number all display math by default (starred envs remain unnumbered).
             // This also covers plain `\[ ... \]` blocks produced by pandoc.

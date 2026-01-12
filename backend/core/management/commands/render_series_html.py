@@ -339,25 +339,92 @@ def _unwrap_single_brace_command(tex: str, command: str) -> str:
     return "".join(out)
 
 
-def _wrap_solution_environments(tex: str) -> str:
+def _rewrite_solution_commands(tex: str, show: bool) -> str:
+    def _rewrite_one(source: str, command: str) -> str:
+        needle = f"\\{command}"
+        out: list[str] = []
+        i = 0
+        n = len(source)
+
+        while i < n:
+            j = source.find(needle, i)
+            if j == -1:
+                out.append(source[i:])
+                break
+            out.append(source[i:j])
+
+            k = j + len(needle)
+            while k < n and source[k].isspace():
+                k += 1
+            if k >= n or source[k] != "{":
+                out.append(source[j:k])
+                i = k
+                continue
+
+            depth = 0
+            k += 1
+            start = k
+            while k < n:
+                ch = source[k]
+                if ch == "%" and (k == 0 or source[k - 1] != "\\"):
+                    nl = source.find("\n", k)
+                    if nl == -1:
+                        k = n
+                        break
+                    k = nl + 1
+                    continue
+                if ch == "{" and (k == 0 or source[k - 1] != "\\"):
+                    depth += 1
+                elif ch == "}" and (k == 0 or source[k - 1] != "\\"):
+                    if depth == 0:
+                        content = source[start:k]
+                        if show:
+                            out.append(f"\\begin{{quote}}\\textbf{{Solution. }}{content}\\end{{quote}}")
+                        k += 1
+                        break
+                    depth -= 1
+                k += 1
+
+            if k >= n and depth >= 0:
+                out.append(source[j:])
+                break
+
+            i = k
+
+        return "".join(out)
+
+    tex = _rewrite_one(tex, "loesung")
+    tex = _rewrite_one(tex, "solution")
+    return tex
+
+
+def _wrap_solution_environments(tex: str, show: bool) -> str:
     """
     Pandoc drops unknown environments (like `solution` / `loesung`) along with their
-    contents, which hides nested lists in the HTML preview. Map them to a simple
-    block Pandoc understands so the content is preserved.
+    contents. When solutions should be shown, map them to a simple block Pandoc
+    understands; otherwise strip them entirely.
     """
     for env in ["solution", "loesung"]:
-        tex = re.sub(
-            rf"\\begin\{{{env}\}}",
-            r"\\begin{quote}\\textbf{Solution. }",
-            tex,
-            flags=re.IGNORECASE,
-        )
-        tex = re.sub(
-            rf"\\end\{{{env}\}}",
-            r"\\end{quote}",
-            tex,
-            flags=re.IGNORECASE,
-        )
+        if show:
+            tex = re.sub(
+                rf"\\begin\{{{env}\}}",
+                r"\\begin{quote}\\textbf{Solution. }",
+                tex,
+                flags=re.IGNORECASE,
+            )
+            tex = re.sub(
+                rf"\\end\{{{env}\}}",
+                r"\\end{quote}",
+                tex,
+                flags=re.IGNORECASE,
+            )
+        else:
+            tex = re.sub(
+                rf"\\begin\{{{env}\}}[\s\S]*?\\end\{{{env}\}}",
+                "",
+                tex,
+                flags=re.IGNORECASE,
+            )
     return tex
 
 
@@ -374,6 +441,45 @@ def _preserve_item_labels(tex: str) -> str:
         return f"\\item \\textbf{{{label}}} "
 
     return re.sub(r"\\item\\[(.*?)\\]", repl, tex)
+
+
+def _strip_tex_comments(tex: str) -> str:
+    out: list[str] = []
+    for line in tex.splitlines(keepends=True):
+        for idx, ch in enumerate(line):
+            if ch == "%" and (idx == 0 or line[idx - 1] != "\\"):
+                out.append(line[:idx] + ("\n" if line.endswith("\n") else ""))
+                break
+        else:
+            out.append(line)
+    return "".join(out)
+
+
+def _tex_defines_command(tex: str, name: str) -> bool:
+    pattern = re.compile(
+        rf"\\(?:re)?newcommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
+        rf"|\\renewcommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
+        rf"|\\providecommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
+        rf"|\\def\\s*\\\\{name}\\b",
+        re.IGNORECASE,
+    )
+    return bool(pattern.search(tex))
+
+
+def _tex_uses_ethuebung(tex: str) -> bool:
+    return bool(re.search(r"\\usepackage\\s*(?:\\[[^\\]]*\\])?\\s*\\{[^}]*ethuebung[^}]*\\}", tex, re.IGNORECASE))
+
+
+def _tex_uses_ethuebung_solutions(tex: str) -> bool:
+    for match in re.finditer(
+        r"\\usepackage\\s*\\[([^\\]]*)\\]\\s*\\{[^}]*ethuebung[^}]*\\}",
+        tex,
+        re.IGNORECASE,
+    ):
+        opts = match.group(1)
+        if re.search(r"(^|,)\\s*sol\\s*(,|$)", opts, re.IGNORECASE):
+            return True
+    return False
 
 
 class Command(BaseCommand):
@@ -446,7 +552,14 @@ class Command(BaseCommand):
         raw_tex = _move_trailing_math_labels_inside_env(raw_tex)
         raw_tex = raw_tex.replace("\\begin{exenumerate}", "\\begin{enumerate}")
         raw_tex = raw_tex.replace("\\end{exenumerate}", "\\end{enumerate}")
-        raw_tex = _wrap_solution_environments(raw_tex)
+        scan_tex = _strip_tex_comments(raw_tex)
+        uses_ethuebung = _tex_uses_ethuebung(scan_tex)
+        show_solutions = _tex_uses_ethuebung_solutions(scan_tex)
+        if not uses_ethuebung:
+            if _tex_defines_command(scan_tex, "loesung") or _tex_defines_command(scan_tex, "solution"):
+                show_solutions = True
+        raw_tex = _rewrite_solution_commands(raw_tex, show_solutions)
+        raw_tex = _wrap_solution_environments(raw_tex, show_solutions)
         raw_tex = _preserve_item_labels(raw_tex)
         raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
         if marker_count:

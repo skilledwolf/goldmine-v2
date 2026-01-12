@@ -13,6 +13,7 @@ import {
     Mountain,
     Search,
     Shield,
+    UploadCloud,
     PanelLeftClose,
     PanelLeftOpen,
 } from 'lucide-react';
@@ -147,6 +148,23 @@ export function Sidebar() {
                         {collapsed && <span className="sr-only">Info</span>}
                     </Link>
                 </Button>
+                {isStaff && (
+                    <Button
+                        variant="ghost"
+                        className={cn(
+                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                            collapsed && "justify-center px-2"
+                        )}
+                        asChild
+                        title={collapsed ? "Uploads" : undefined}
+                    >
+                        <Link href="/uploads">
+                            <UploadCloud className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                            {!collapsed && "Uploads"}
+                            {collapsed && <span className="sr-only">Uploads</span>}
+                        </Link>
+                    </Button>
+                )}
                 {isStaff && (
                     <Button
                         variant="ghost"

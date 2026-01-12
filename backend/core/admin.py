@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Lecture, SemesterGroup, Series, Exercise, UserComment
+from .models import Lecture, SemesterGroup, Series, Exercise, UserComment, UploadJob
 
 class SemesterGroupInline(admin.TabularInline):
     model = SemesterGroup
@@ -44,3 +44,10 @@ class UserCommentAdmin(admin.ModelAdmin):
     list_display = ('user', 'exercise', 'created_at')
     list_filter = ('created_at',)
     search_fields = ('text', 'user__username')
+
+
+@admin.register(UploadJob)
+class UploadJobAdmin(admin.ModelAdmin):
+    list_display = ('id', 'lecture', 'semester', 'year', 'status', 'user', 'created_at')
+    list_filter = ('status', 'semester', 'year', 'lecture')
+    search_fields = ('lecture__name', 'lecture__long_name', 'fs_path', 'source_filename', 'user__username')
