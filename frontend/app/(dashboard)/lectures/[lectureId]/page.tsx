@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { addRecentItem } from '@/lib/recent';
 import { useApiSWR } from '@/lib/swr';
 import { useStarredLectures } from '@/lib/stars';
-import { Star } from 'lucide-react';
+import { Star, FileCheck } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
 
 type Exercise = {
@@ -102,34 +102,45 @@ export default function LectureDetailPage() {
   if (!lecture) return null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/50 pb-6">
+        <div className="flex items-start gap-4">
           <button
             type="button"
-            className={`rounded-md p-1 ${lecture && isStarred(lecture.id) ? 'text-amber-500' : 'text-muted-foreground'}`}
+            className={`mt-1 rounded-full p-2 transition-all hover:bg-muted group ${lecture && isStarred(lecture.id) ? 'text-amber-500 bg-amber-500/10' : 'text-muted-foreground'}`}
             onClick={() => lecture && toggleStar(lecture.id)}
             aria-pressed={lecture ? isStarred(lecture.id) : false}
             aria-label={lecture && isStarred(lecture.id) ? 'Unstar lecture' : 'Star lecture'}
           >
-            <Star className="h-5 w-5" fill={lecture && isStarred(lecture.id) ? 'currentColor' : 'none'} />
+            <Star className={`h-6 w-6 transition-transform group-hover:scale-110 ${lecture && isStarred(lecture.id) ? 'fill-current' : ''}`} />
           </button>
-          <div>
-          <p className="text-sm text-muted-foreground">Lecture</p>
-          <h1 className="text-3xl font-bold tracking-tight">{lecture.long_name}</h1>
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono">
+              <span>Lecture</span>
+              <span>/</span>
+              <span className="text-foreground">{lecture.name}</span>
+            </div>
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+              {lecture.long_name}
+            </h1>
           </div>
         </div>
-        <Link href="/lectures" className="text-sm text-primary hover:underline">
-          ← Back to lectures
-        </Link>
+        <Button variant="ghost" className="self-start md:self-center gap-2 text-muted-foreground hover:text-primary" asChild>
+          <Link href="/lectures">
+            <span className="text-lg">←</span> Back to lectures
+          </Link>
+        </Button>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs">
-          <span className="font-semibold text-muted-foreground">Semester:</span>
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center gap-3 p-1">
+          <span className="text-sm font-medium text-muted-foreground mr-2">Semester:</span>
           <button
             type="button"
-            className={`rounded-md border px-2 py-1 ${effectiveGroupId === 'all' ? 'border-primary/50 text-primary' : 'border-input'}`}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all ${effectiveGroupId === 'all'
+              ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+              : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
             onClick={() => setActiveGroupId('all')}
           >
             All
@@ -138,7 +149,10 @@ export default function LectureDetailPage() {
             <button
               key={sg.id}
               type="button"
-              className={`rounded-md border px-2 py-1 ${effectiveGroupId === String(sg.id) ? 'border-primary/50 text-primary' : 'border-input'}`}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-all ${effectiveGroupId === String(sg.id)
+                ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
               onClick={() => setActiveGroupId(String(sg.id))}
             >
               {sg.semester}{sg.year}
@@ -146,82 +160,105 @@ export default function LectureDetailPage() {
           ))}
         </div>
 
-        <div className="grid gap-4">
-        {filteredGroups.map((sg) => (
-          <Card key={sg.id}>
-            <CardHeader>
-              <CardTitle className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="grid gap-8">
+          {filteredGroups.map((sg) => (
+            <div key={sg.id} className="space-y-4 animate-in slide-in-from-bottom-4 duration-500 fade-in fill-mode-backwards" style={{ animationDelay: '100ms' }}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-xl border border-primary/10 bg-primary/5 p-4 backdrop-blur-sm">
                 <div>
-                  <div className="text-lg font-semibold">{lecture.name} {sg.semester}{sg.year}</div>
-                  <div className="text-sm font-normal text-muted-foreground">
-                    Professors: {sg.professors || 'n/a'}
+                  <h2 className="text-xl font-semibold flex items-center gap-2">
+                    {sg.semester} {sg.year}
+                    <span className="text-sm font-normal text-muted-foreground bg-background/50 px-2 py-0.5 rounded-md border border-border/50">
+                      {lecture.name}
+                    </span>
+                  </h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    <span className="font-medium text-foreground/80">Professors:</span> {sg.professors || 'n/a'}
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" className="shadow-sm" asChild>
+                  <a
+                    href={`${apiBase}/files/semester/${sg.id}/zip`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="gap-2"
+                  >
+                    <span className="text-primary">↓</span> Download ZIP
+                  </a>
+                </Button>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {sg.series.length === 0 && (
+                  <div className="col-span-full py-8 text-center text-muted-foreground italic border border-dashed rounded-xl">
+                    No series available for this semester yet.
                   </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" asChild>
-                    <a
-                      href={`${apiBase}/files/semester/${sg.id}/zip`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Download semester zip
-                    </a>
-                  </Button>
-                </div>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {sg.series.length === 0 && (
-                <div className="text-sm text-muted-foreground">No series yet.</div>
-              )}
-              {sg.series.map((series) => (
-                <div
-                  key={series.id}
-                  className="rounded-md border p-3 hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="space-y-1">
-                      <div className="text-sm uppercase tracking-wide text-muted-foreground">
-                        Series {series.number}
-                        {series.title ? ` — ${series.title}` : ''}
-                        {` (${series.exercises.length} exercises)`}
+                )}
+                {sg.series.map((series) => (
+                  <div
+                    key={series.id}
+                    className="group relative flex flex-col justify-between rounded-xl border bg-card p-5 transition-all hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1 hover:border-primary/50"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between h-5">
+                        {series.title ? (
+                          <span className="font-mono text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            Series {series.number}
+                          </span>
+                        ) : (
+                          <span />
+                        )}
+                        {series.solution_file && (
+                          <span className="flex h-2 w-2 rounded-full bg-green-500 ring-2 ring-green-500/20" title="Solutions available" />
+                        )}
                       </div>
-                      <ul className="mt-2 space-y-1 text-sm text-foreground/90">
-                        {series.exercises.slice(0, 6).map((ex) => (
-                          <li key={ex.id} className="flex gap-2">
-                            <span className="text-muted-foreground">Ex {ex.number}:</span>
-                            <span>{ex.title || 'Untitled'}</span>
-                          </li>
-                        ))}
-                      </ul>
-                      {series.exercises.length > 6 && (
-                        <div className="text-xs text-muted-foreground">
-                          +{series.exercises.length - 6} more exercises
+                      <h3 className="font-semibold text-lg leading-tight group-hover:text-primary transition-colors">
+                        {series.title || `Series ${series.number}`}
+                      </h3>
+
+                      {series.exercises.length > 0 ? (
+                        <div className="space-y-1.5">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">{series.exercises.length} Exercises</p>
+                          <ul className="space-y-1">
+                            {series.exercises.slice(0, 4).map((ex) => (
+                              <li key={ex.id} className="text-sm text-foreground/80 truncate flex items-center gap-1.5">
+                                <span className="h-1 w-1 rounded-full bg-muted-foreground/50" />
+                                <span className="font-medium">Ex {ex.number}:</span>
+                                <span className="truncate opacity-80">{ex.title || 'Untitled'}</span>
+                              </li>
+                            ))}
+                          </ul>
+                          {series.exercises.length > 4 && (
+                            <p className="text-xs text-muted-foreground mt-1 pl-2.5">
+                              +{series.exercises.length - 4} more...
+                            </p>
+                          )}
                         </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">No exercises listed.</p>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" asChild>
-                        <Link href={`/series/${series.id}`}>Open series</Link>
+
+                    <div className="mt-5 flex items-center gap-2 pt-4 border-t border-border/50">
+                      <Button size="sm" className="flex-1 shadow-sm group-hover:bg-primary/90" asChild>
+                        <Link href={`/series/${series.id}`}>Open Series</Link>
                       </Button>
                       {series.solution_file && (
-                        <Button size="sm" variant="outline" asChild>
+                        <Button size="icon" variant="ghost" className="shrink-0 text-muted-foreground hover:text-green-600 hover:bg-green-500/10" title="View Solutions" asChild>
                           <a
                             href={`${apiBase}/files/${series.id}/solution`}
                             target="_blank"
                             rel="noreferrer"
                           >
-                            Solutions
+                            <FileCheck className="h-5 w-5" />
                           </a>
                         </Button>
                       )}
                     </div>
                   </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        ))}
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

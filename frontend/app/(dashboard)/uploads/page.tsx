@@ -182,216 +182,300 @@ export default function UploadsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Staff</p>
-        <h1 className="text-3xl font-bold tracking-tight">Upload new semester</h1>
-        <p className="text-sm text-muted-foreground">
-          Upload a zip file of a semester folder. We will validate and suggest series entries before import.
+    <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+      <div className="border-b border-border/50 pb-6">
+        <p className="text-sm font-medium text-muted-foreground mb-1 uppercase tracking-wider">Staff Area</p>
+        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-purple-400 to-pink-600 bg-clip-text text-transparent">
+          Upload Semester
+        </h1>
+        <p className="text-lg text-muted-foreground mt-2 max-w-2xl">
+          Upload a zip file containing the full semester folder structure. We'll analyze it and let you confirm the series details before importing.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upload zip</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleUpload} className="grid gap-4 md:grid-cols-2">
-            <label className="text-sm font-medium text-muted-foreground">
-              Lecture
-              <select
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={lectureId}
-                onChange={(e) => setLectureId(e.target.value)}
-              >
-                {lectures.map((lec) => (
-                  <option key={lec.id} value={String(lec.id)}>
-                    {lec.name} — {lec.long_name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm font-medium text-muted-foreground">
-              Year
-              <Input
-                type="number"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-                placeholder="e.g. 2024"
-                className="mt-1"
-              />
-            </label>
-            <label className="text-sm font-medium text-muted-foreground">
-              Semester
-              <select
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                value={semester}
-                onChange={(e) => setSemester(e.target.value as 'HS' | 'FS')}
-              >
-                <option value="HS">HS</option>
-                <option value="FS">FS</option>
-              </select>
-            </label>
-            <label className="text-sm font-medium text-muted-foreground">
-              fs_path (optional)
-              <Input
-                value={fsPath}
-                onChange={(e) => setFsPath(e.target.value)}
-                placeholder="QM1/2024HS"
-                className="mt-1"
-              />
-            </label>
-            <label className="text-sm font-medium text-muted-foreground md:col-span-2">
-              Professors
-              <textarea
-                value={professors}
-                onChange={(e) => setProfessors(e.target.value)}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                rows={2}
-                placeholder="One per line"
-              />
-            </label>
-            <label className="text-sm font-medium text-muted-foreground md:col-span-2">
-              Assistants
-              <textarea
-                value={assistants}
-                onChange={(e) => setAssistants(e.target.value)}
-                className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                rows={2}
-                placeholder="One per line"
-              />
-            </label>
-            <label className="text-sm font-medium text-muted-foreground md:col-span-2">
-              Zip file
-              <input
-                type="file"
-                accept=".zip"
-                onChange={(e) => setZipFile(e.target.files?.[0] || null)}
-                className="mt-1 block w-full text-sm"
-              />
-            </label>
-
-            {uploadError && <div className="text-sm text-destructive md:col-span-2">{uploadError}</div>}
-
-            <div className="md:col-span-2 flex items-center gap-2">
-              <Button type="submit" disabled={uploading}>
-                {uploading ? 'Uploading…' : 'Upload & validate'}
-              </Button>
-              {report && (
-                <span className="text-xs text-muted-foreground">
-                  Detected {report.series.length} series; root: {report.root}
-                </span>
-              )}
+      <div className="grid gap-8 lg:grid-cols-[1fr_350px] items-start">
+        <div className="space-y-8">
+          <Card className="border-primary/10 bg-card/40 backdrop-blur-sm shadow-sm overflow-hidden">
+            <div className="bg-primary/5 px-6 py-4 border-b border-primary/10 flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                📤
+              </span>
+              <h2 className="font-semibold text-lg">New Upload</h2>
             </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      {report && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Validation report</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {report.warnings?.length > 0 && (
-              <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Warnings: {report.warnings.join(', ')}
-              </div>
-            )}
-
-            {report.unassigned?.length > 0 && (
-              <details className="rounded-md border bg-muted/30 px-3 py-2">
-                <summary className="cursor-pointer text-sm text-muted-foreground">
-                  {report.unassigned.length} unassigned files
-                </summary>
-                <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  {report.unassigned.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-
-            <div className="space-y-3">
-              {seriesEdits.map((s, idx) => (
-                <div key={`${s.dir}-${idx}`} className="rounded-md border p-3">
-                  <div className="flex flex-wrap gap-3">
-                    <label className="text-xs text-muted-foreground">
-                      Number
+            <CardContent className="p-6">
+              <form onSubmit={handleUpload} className="space-y-6">
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Lecture</label>
+                    <select
+                      className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                      value={lectureId}
+                      onChange={(e) => setLectureId(e.target.value)}
+                    >
+                      {lectures.map((lec) => (
+                        <option key={lec.id} value={String(lec.id)}>
+                          {lec.name} — {lec.long_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Year</label>
                       <Input
                         type="number"
-                        value={s.number}
-                        onChange={(e) => handleSeriesChange(idx, { number: Number(e.target.value) })}
-                        className="mt-1 w-24"
+                        value={year}
+                        onChange={(e) => setYear(e.target.value)}
+                        placeholder="e.g. 2024"
+                        className="bg-background/50"
                       />
-                    </label>
-                    <label className="text-xs text-muted-foreground">
-                      Title (optional)
-                      <Input
-                        value={s.title || ''}
-                        onChange={(e) => handleSeriesChange(idx, { title: e.target.value })}
-                        className="mt-1 w-64"
-                      />
-                    </label>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Semester</label>
+                      <select
+                        className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                        value={semester}
+                        onChange={(e) => setSemester(e.target.value as 'HS' | 'FS')}
+                      >
+                        <option value="HS">HS</option>
+                        <option value="FS">FS</option>
+                      </select>
+                    </div>
                   </div>
-                  <div className="mt-3 grid gap-2 md:grid-cols-3">
-                    <label className="text-xs text-muted-foreground">
-                      PDF
-                      <Input
-                        value={s.pdf_file || ''}
-                        onChange={(e) => handleSeriesChange(idx, { pdf_file: e.target.value })}
-                        className="mt-1"
-                      />
-                    </label>
-                    <label className="text-xs text-muted-foreground">
-                      TeX (optional)
-                      <Input
-                        value={s.tex_file || ''}
-                        onChange={(e) => handleSeriesChange(idx, { tex_file: e.target.value })}
-                        className="mt-1"
-                      />
-                    </label>
-                    <label className="text-xs text-muted-foreground">
-                      Solution (optional)
-                      <Input
-                        value={s.solution_file || ''}
-                        onChange={(e) => handleSeriesChange(idx, { solution_file: e.target.value })}
-                        className="mt-1"
-                      />
-                    </label>
-                  </div>
-                  {s.issues && s.issues.length > 0 && (
-                    <div className="mt-2 text-xs text-destructive">Issues: {s.issues.join(', ')}</div>
-                  )}
-                </div>
-              ))}
-            </div>
 
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={overwrite}
-                  onChange={(e) => setOverwrite(e.target.checked)}
-                />
-                Overwrite/merge into existing fs_path
-              </label>
-              <Button
-                type="button"
-                disabled={importing || hasBlockingIssues || !jobId}
-                onClick={handleImport}
-              >
-                {importing ? 'Importing…' : 'Import into Gold Mine'}
-              </Button>
-              {hasBlockingIssues && (
-                <span className="text-xs text-destructive">Fix missing PDFs before importing.</span>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Override Filesystem Path <span className="text-muted-foreground font-normal">(Optional)</span>
+                    </label>
+                    <Input
+                      value={fsPath}
+                      onChange={(e) => setFsPath(e.target.value)}
+                      placeholder="e.g. QM1/2024HS"
+                      className="bg-background/50 font-mono text-xs"
+                    />
+                    <p className="text-[10px] text-muted-foreground">
+                      Leave blank to auto-generate based on lecture and year.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium text-foreground">Professors</label>
+                    <textarea
+                      value={professors}
+                      onChange={(e) => setProfessors(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all min-h-[80px]"
+                      placeholder="One name per line"
+                    />
+                  </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium text-foreground">Assistants</label>
+                    <textarea
+                      value={assistants}
+                      onChange={(e) => setAssistants(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all min-h-[80px]"
+                      placeholder="One name per line"
+                    />
+                  </div>
+
+                  <div className="space-y-2 sm:col-span-2">
+                    <label className="text-sm font-medium text-foreground">Zip File</label>
+                    <div className="rounded-lg border border-dashed border-border/50 bg-muted/20 p-6 text-center hover:bg-muted/40 transition-colors">
+                      <input
+                        type="file"
+                        accept=".zip"
+                        onChange={(e) => setZipFile(e.target.files?.[0] || null)}
+                        className="block w-full text-sm text-muted-foreground
+                                    file:mr-4 file:py-2 file:px-4
+                                    file:rounded-full file:border-0
+                                    file:text-xs file:font-semibold
+                                    file:bg-primary file:text-primary-foreground
+                                    hover:file:bg-primary/90"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {uploadError && (
+                  <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive border border-destructive/20">
+                    🚨 {uploadError}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  {report && (
+                    <div className="mr-auto text-xs text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                      Detected {report.series.length} series in `{report.root}`
+                    </div>
+                  )}
+                  <Button type="submit" disabled={uploading}>
+                    {uploading ? (
+                      <>Processing...</>
+                    ) : (
+                      <>
+                        Upload & Validate <span className="ml-2">→</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {report && (
+            <div className="space-y-6 animate-in slide-in-from-bottom-5 duration-500">
+              <div className="flex items-center justify-between border-b border-border/50 pb-2">
+                <h2 className="text-xl font-semibold">Validation Report</h2>
+              </div>
+
+              {report.warnings?.length > 0 && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium text-amber-500">Warnings</h4>
+                  <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+                    <ul className="list-disc list-inside space-y-1">
+                      {report.warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              )}
+
+              {report.unassigned?.length > 0 && (
+                <Card className="border-border/50">
+                  <details className="group">
+                    <summary className="flex cursor-pointer items-center justify-between p-4 font-medium text-muted-foreground hover:text-foreground hover:bg-muted/30 transition-colors">
+                      <span>Found {report.unassigned.length} unassigned files</span>
+                      <span className="group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div className="px-4 pb-4 border-t border-border/50 bg-muted/10">
+                      <ul className="mt-4 space-y-1 text-xs font-mono text-muted-foreground max-h-40 overflow-y-auto">
+                        {report.unassigned.map((f) => (
+                          <li key={f}>{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </details>
+                </Card>
+              )}
+
+              <div className="space-y-4">
+                <h4 className="text-sm font-medium text-foreground">Series Configuration</h4>
+                {seriesEdits.map((s, idx) => (
+                  <div key={`${s.dir}-${idx}`} className="rounded-xl border border-border/50 bg-card p-4 shadow-sm space-y-4 hover:border-primary/20 transition-all">
+                    <div className="flex flex-wrap items-start gap-4">
+                      <div className="w-24">
+                        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Number</label>
+                        <Input
+                          type="number"
+                          value={s.number}
+                          onChange={(e) => handleSeriesChange(idx, { number: Number(e.target.value) })}
+                          className="h-8"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-[200px]">
+                        <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Title</label>
+                        <Input
+                          value={s.title || ''}
+                          onChange={(e) => handleSeriesChange(idx, { title: e.target.value })}
+                          placeholder="Optional title"
+                          className="h-8"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">PDF File</label>
+                        <Input
+                          value={s.pdf_file || ''}
+                          onChange={(e) => handleSeriesChange(idx, { pdf_file: e.target.value })}
+                          className={`h-8 font-mono text-xs ${!s.pdf_file ? 'border-destructive/50 bg-destructive/5' : ''}`}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">TeX File</label>
+                        <Input
+                          value={s.tex_file || ''}
+                          onChange={(e) => handleSeriesChange(idx, { tex_file: e.target.value })}
+                          className="h-8 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">Solution</label>
+                        <Input
+                          value={s.solution_file || ''}
+                          onChange={(e) => handleSeriesChange(idx, { solution_file: e.target.value })}
+                          className="h-8 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                    {s.issues && s.issues.length > 0 && (
+                      <div className="flex gap-2">
+                        {s.issues.map(iss => (
+                          <span key={iss} className="text-[10px] px-2 py-0.5 rounded-full bg-destructive/10 text-destructive border border-destructive/20">
+                            {iss}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="sticky bottom-4 z-10 flex flex-col sm:flex-row items-center justify-between gap-4 rounded-xl border border-primary/20 bg-background/80 p-4 backdrop-blur-md shadow-lg">
+                <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={overwrite}
+                    onChange={(e) => setOverwrite(e.target.checked)}
+                    className="rounded border-primary text-primary focus:ring-primary h-4 w-4"
+                  />
+                  <span>Overwrite existing files if they exist</span>
+                </label>
+
+                <div className="flex items-center gap-4 w-full sm:w-auto">
+                  {hasBlockingIssues && (
+                    <span className="text-xs text-destructive font-medium text-center">
+                      Fix missing PDFs to import
+                    </span>
+                  )}
+                  <Button
+                    className="w-full sm:w-auto"
+                    size="lg"
+                    disabled={importing || hasBlockingIssues || !jobId}
+                    onClick={handleImport}
+                  >
+                    {importing ? 'Importing...' : 'Confirm & Import'}
+                  </Button>
+                </div>
+              </div>
+              {importStatus && (
+                <div className={`text-center p-4 rounded-lg bg-muted ${importStatus.includes('failed') ? 'text-destructive' : 'text-green-600 dark:text-green-400'}`}>
+                  {importStatus}
+                </div>
               )}
             </div>
+          )}
+        </div>
 
-            {importStatus && <div className="text-sm text-muted-foreground">{importStatus}</div>}
-          </CardContent>
-        </Card>
-      )}
+        <div className="hidden lg:block space-y-6 sticky top-6">
+          <Card className="bg-muted/30 border-none shadow-none">
+            <CardHeader>
+              <CardTitle className="text-base">Quick Tips</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground space-y-3">
+              <p>
+                <strong>Zip Structure:</strong> Ensure your zip file contains folders named <code>Series 1</code>, <code>Series 2</code>, etc.
+              </p>
+              <p>
+                <strong>Naming:</strong> Consistent naming (e.g., <code>ex01.pdf</code>, <code>sol01.pdf</code>) helps the auto-detector.
+              </p>
+              <p>
+                <strong>Re-upload:</strong> If validation fails, you can fix your zip and upload again, or manually correct the paths in the form.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

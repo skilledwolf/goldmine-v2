@@ -398,6 +398,66 @@ def _rewrite_solution_commands(tex: str, show: bool) -> str:
     return tex
 
 
+def _rewrite_two_arg_command(tex: str, command: str, template: str) -> str:
+    needle = f"\\{command}"
+    out: list[str] = []
+    i = 0
+    n = len(tex)
+
+    def _consume_braced(start_idx: int) -> tuple[str | None, int]:
+        if start_idx >= n or tex[start_idx] != "{":
+            return None, start_idx
+        depth = 0
+        k = start_idx + 1
+        content_start = k
+        while k < n:
+            ch = tex[k]
+            if ch == "%" and (k == 0 or tex[k - 1] != "\\"):
+                nl = tex.find("\n", k)
+                if nl == -1:
+                    return None, n
+                k = nl + 1
+                continue
+            if ch == "{" and (k == 0 or tex[k - 1] != "\\"):
+                depth += 1
+            elif ch == "}" and (k == 0 or tex[k - 1] != "\\"):
+                if depth == 0:
+                    return tex[content_start:k], k + 1
+                depth -= 1
+            k += 1
+        return None, n
+
+    while i < n:
+        j = tex.find(needle, i)
+        if j == -1:
+            out.append(tex[i:])
+            break
+        out.append(tex[i:j])
+
+        k = j + len(needle)
+        while k < n and tex[k].isspace():
+            k += 1
+        first, k_after = _consume_braced(k)
+        if first is None:
+            out.append(tex[j:k_after])
+            i = k_after
+            continue
+
+        k = k_after
+        while k < n and tex[k].isspace():
+            k += 1
+        second, k_after = _consume_braced(k)
+        if second is None:
+            out.append(tex[j:k_after])
+            i = k_after
+            continue
+
+        out.append(template.format(arg1=first, arg2=second))
+        i = k_after
+
+    return "".join(out)
+
+
 def _wrap_solution_environments(tex: str, show: bool) -> str:
     """
     Pandoc drops unknown environments (like `solution` / `loesung`) along with their
@@ -457,22 +517,22 @@ def _strip_tex_comments(tex: str) -> str:
 
 def _tex_defines_command(tex: str, name: str) -> bool:
     pattern = re.compile(
-        rf"\\(?:re)?newcommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
-        rf"|\\renewcommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
-        rf"|\\providecommand\\*?\\s*(?:\\{{\\\\{name}\\}}|\\\\{name})"
-        rf"|\\def\\s*\\\\{name}\\b",
+        rf"\\(?:re)?newcommand\*?\s*(?:\{{\\{name}\}}|\\{name})"
+        rf"|\\renewcommand\*?\s*(?:\{{\\{name}\}}|\\{name})"
+        rf"|\\providecommand\*?\s*(?:\{{\\{name}\}}|\\{name})"
+        rf"|\\def\s*\\{name}\b",
         re.IGNORECASE,
     )
     return bool(pattern.search(tex))
 
 
 def _tex_uses_ethuebung(tex: str) -> bool:
-    return bool(re.search(r"\\\\usepackage\\s*(?:\\[(.*?)\\])?\\s*\\{[^}]*ethuebung[^}]*\\}", tex, re.IGNORECASE))
+    return bool(re.search(r"\\usepackage\s*(?:\[(.*?)\])?\s*\{[^}]*ethuebung[^}]*\}", tex, re.IGNORECASE))
 
 
 def _tex_uses_ethuebung_solutions(tex: str) -> bool:
     for match in re.finditer(
-        r"\\\\usepackage\\s*\\[(.*?)\\]\\s*\\{[^}]*ethuebung[^}]*\\}",
+        r"\\usepackage\s*\[(.*?)\]\s*\{[^}]*ethuebung[^}]*\}",
         tex,
         re.IGNORECASE,
     ):
@@ -560,6 +620,7 @@ class Command(BaseCommand):
                 show_solutions = True
         raw_tex = _rewrite_solution_commands(raw_tex, show_solutions)
         raw_tex = _wrap_solution_environments(raw_tex, show_solutions)
+        raw_tex = _rewrite_two_arg_command(raw_tex, "uebung", r"\subsection*{{{arg1}. {arg2}}}")
         raw_tex = _preserve_item_labels(raw_tex)
         raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
         if marker_count:

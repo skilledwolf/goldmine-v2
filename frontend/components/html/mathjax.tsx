@@ -41,7 +41,7 @@ declare global {
         inlineMath?: [string, string][];
         displayMath?: [string, string][];
         processEscapes?: boolean;
-        macros?: Record<string, string>;
+        macros?: Record<string, any>;
         tags?: 'all' | 'ams' | 'none';
       };
       options?: {

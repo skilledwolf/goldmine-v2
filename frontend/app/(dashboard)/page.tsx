@@ -10,7 +10,7 @@ import { FileBadges } from '@/components/ui/file-badges';
 import { useRecentItems } from '@/lib/recent';
 import { useApiSWR } from '@/lib/swr';
 import { useStarredLectures } from '@/lib/stars';
-import { Star } from 'lucide-react';
+import { Star, BookOpen, Clock, Zap } from 'lucide-react';
 
 type Lecture = {
   id: number;
@@ -182,165 +182,204 @@ export default function DashboardHome() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm text-muted-foreground">Welcome back</p>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <p className="text-sm font-medium text-muted-foreground">Welcome back,</p>
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
             {user ? user.username : 'Gold Mine User'}
           </h1>
         </div>
-        <Button asChild>
-          <Link href="/lectures">Browse lectures</Link>
+        <Button asChild className="shadow-lg shadow-primary/25 transition-transform hover:scale-105 active:scale-95">
+          <Link href="/lectures">Browse Available Lectures</Link>
         </Button>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {/* Main Content Area - Variable Width */}
+        <div className="space-y-6 md:col-span-2 lg:col-span-2 xl:col-span-3">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold">Lectures</h2>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              {starredIds.length > 0 && <span>{starredIds.length} starred</span>}
+            <h2 className="text-2xl font-semibold tracking-tight">Your Lectures</h2>
+            <div className="flex items-center gap-2 rounded-lg bg-muted/50 p-1">
               <Button
-                variant={showStarredOnly ? 'default' : 'outline'}
+                variant={showStarredOnly ? 'secondary' : 'ghost'}
                 size="sm"
                 onClick={() => setShowStarredOnly(true)}
                 disabled={starredIds.length === 0}
+                className="transition-all"
               >
-                Starred
+                Starred <span className="ml-1 text-xs opacity-70">({starredIds.length})</span>
               </Button>
-              {starredIds.length > 0 && (
-                <Button
-                  variant={!showStarredOnly ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setShowStarredOnly(false)}
-                >
-                  All
-                </Button>
-              )}
+              <Button
+                variant={!showStarredOnly ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setShowStarredOnly(false)}
+                className="transition-all"
+              >
+                All Lectures
+              </Button>
             </div>
           </div>
-          <div className="grid gap-4 md:grid-cols-2">
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {displayLectures.map((lecture) => (
-              <Card key={lecture.id} className="h-full">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between text-lg">
-                    <span>{lecture.long_name}</span>
+              <Card key={lecture.id} className="group relative overflow-hidden transition-all hover:shadow-xl hover:shadow-primary/5 hover:-translate-y-1 border-primary/10">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+                <CardHeader className="relative pb-2">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="rounded-md bg-primary/10 p-2 text-primary">
+                      <BookOpen className="h-5 w-5" />
+                    </div>
                     <button
                       type="button"
-                      className={`rounded-md p-1 ${isStarred(lecture.id) ? 'text-amber-500' : 'text-muted-foreground'}`}
+                      className={`rounded-full p-2 transition-colors hover:bg-muted ${isStarred(lecture.id) ? 'text-amber-500' : 'text-muted-foreground'}`}
                       onClick={() => toggleStar(lecture.id)}
                       aria-pressed={isStarred(lecture.id)}
                       aria-label={isStarred(lecture.id) ? 'Unstar lecture' : 'Star lecture'}
                     >
                       <Star className="h-4 w-4" fill={isStarred(lecture.id) ? 'currentColor' : 'none'} />
                     </button>
+                  </div>
+                  <CardTitle className="text-lg font-bold leading-tight group-hover:text-primary transition-colors">
+                    {lecture.long_name}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-2 text-sm text-muted-foreground">
-                  <div className="font-mono text-xs text-foreground">/{lecture.name}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {lecture.semester_groups.map((sg) => (
-                      <Link
-                        key={sg.id}
-                        href={`/lectures/${lecture.id}?semesterGroup=${sg.id}`}
-                        className="rounded-full bg-accent px-2 py-1 text-xs text-accent-foreground hover:bg-accent/70"
-                      >
-                        {sg.semester}{sg.year}
-                      </Link>
-                    ))}
+                <CardContent className="relative space-y-3">
+                  <div className="flex items-center gap-2 font-mono text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded w-fit">
+                    <span>/{lecture.name}</span>
                   </div>
-                  <Button variant="link" className="p-0" asChild>
-                    <Link href={`/lectures/${lecture.id}`}>Open</Link>
+                  <div className="h-px bg-border/50" />
+                  <div className="flex flex-wrap gap-2">
+                    {lecture.semester_groups.length > 0 ? (
+                      lecture.semester_groups.map((sg) => (
+                        <Link
+                          key={sg.id}
+                          href={`/lectures/${lecture.id}?semesterGroup=${sg.id}`}
+                          className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-semibold text-secondary-foreground transition-colors hover:bg-primary hover:text-primary-foreground"
+                        >
+                          {sg.semester} {sg.year}
+                        </Link>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">No Active Semesters</span>
+                    )}
+                  </div>
+                  <Button variant="ghost" className="w-full justify-between group/btn hover:bg-primary/10 hover:text-primary" asChild>
+                    <Link href={`/lectures/${lecture.id}`}>
+                      View Details
+                      <span className="opacity-0 -translate-x-2 transition-all group-hover/btn:opacity-100 group-hover/btn:translate-x-0">→</span>
+                    </Link>
                   </Button>
                 </CardContent>
               </Card>
             ))}
+
             {showStarredOnly && starredIds.length > 6 && (
-              <Card>
-                <CardContent className="p-6 text-sm text-muted-foreground">
-                  Showing 6 of {starredIds.length} starred lectures. Switch to “All” to browse more.
-                </CardContent>
+              <Card className="flex flex-col items-center justify-center p-6 text-center border-dashed bg-muted/30 hover:bg-muted/50 transition-colors">
+                <div className="rounded-full bg-muted p-4 mb-4">
+                  <Star className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium">And {starredIds.length - 6} more...</p>
+                <Button variant="link" onClick={() => setShowStarredOnly(false)}>View All</Button>
               </Card>
             )}
+
             {visibleLectures.length === 0 && (
-              <Card>
-                <CardContent className="p-6 text-muted-foreground">
-                  {showStarredOnly ? (
-                    <>
-                      <div>No starred lectures yet.</div>
-                      <div className="mt-2">
-                        <Button size="sm" asChild>
-                          <Link href="/lectures">Browse lectures to star</Link>
-                        </Button>
-                      </div>
-                    </>
-                  ) : (
-                    'No lectures yet. Add one via the admin panel.'
-                  )}
-                </CardContent>
-              </Card>
+              <div className="col-span-full flex flex-col items-center justify-center rounded-xl border border-dashed p-12 text-center bg-muted/20">
+                <div className="rounded-full bg-muted p-4 mb-4">
+                  {showStarredOnly ? <Star className="h-8 w-8 text-muted-foreground" /> : <BookOpen className="h-8 w-8 text-muted-foreground" />}
+                </div>
+                <h3 className="text-lg font-semibold">{showStarredOnly ? 'No Starred Lectures' : 'No Lectures Available'}</h3>
+                <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                  {showStarredOnly
+                    ? 'Star lectures to have quick access to them here.'
+                    : 'It looks like there are no lectures in the system yet.'}
+                </p>
+                {showStarredOnly && (
+                  <Button variant="outline" className="mt-4" onClick={() => setShowStarredOnly(false)}>Browse All</Button>
+                )}
+              </div>
             )}
           </div>
         </div>
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Continue where you left off</CardTitle>
+
+        {/* Sidebar Area */}
+        <div className="space-y-6">
+          <Card className="border-secondary overflow-hidden">
+            <CardHeader className="bg-secondary/30 pb-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Clock className="h-5 w-5 text-primary" />
+                Jump Back In
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {recentItems.length === 0 && (
-                <div className="text-muted-foreground">No recent items yet.</div>
-              )}
-              {recentItems.map((item) => (
-                <div key={`${item.type}-${item.id}`} className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="font-medium">{item.title}</div>
-                    {item.subtitle && (
-                      <div className="text-xs text-muted-foreground">{item.subtitle}</div>
-                    )}
+            <CardContent className="p-0">
+              <div className="divide-y divide-border/50">
+                {recentItems.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No recently viewed items.
                   </div>
-                  <Link href={item.href} className="text-sm text-primary hover:underline">
-                    Open
-                  </Link>
-                </div>
-              ))}
+                ) : (
+                  recentItems.map((item) => (
+                    <Link
+                      key={`${item.type}-${item.id}`}
+                      href={item.href}
+                      className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/50 group"
+                    >
+                      <div className="min-w-0">
+                        <div className="font-medium truncate group-hover:text-primary transition-colors">{item.title}</div>
+                        {item.subtitle && (
+                          <div className="text-xs text-muted-foreground truncate">{item.subtitle}</div>
+                        )}
+                      </div>
+                      <div className="text-muted-foreground group-hover:text-primary group-hover:translate-x-1 transition-all">
+                        →
+                      </div>
+                    </Link>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="h-fit">
             <CardHeader>
-              <CardTitle>Recently rendered</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Zap className="h-5 w-5 text-amber-500" />
+                Just Updated
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {recentSeriesLoading && (
-                <div className="space-y-2">
-                  <Skeleton className="h-4 w-2/3" />
-                  <Skeleton className="h-4 w-1/2" />
-                  <Skeleton className="h-4 w-3/4" />
-                </div>
-              )}
-              {!recentSeriesLoading && recentSeries.length === 0 && (
-                <div className="text-muted-foreground">No recent series yet.</div>
-              )}
-              {recentSeries.map((series) => (
-                <div key={series.id} className="space-y-1">
-                  <div className="font-medium">
-                    Series {series.number}{series.title ? ` — ${series.title}` : ''}
+            <CardContent className="p-0">
+              <div className="divide-y divide-border/50">
+                {recentSeriesLoading ? (
+                  <div className="p-4 space-y-3">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-4 w-1/2" />
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {series.lecture_name} · {series.semester}{series.year}
+                ) : recentSeries.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No recent updates.
                   </div>
-                  <FileBadges
-                    pdfFile={series.pdf_file}
-                    texFile={series.tex_file}
-                    solutionFile={series.solution_file}
-                  />
-                  <Link href={`/series/${series.id}`} className="text-sm text-primary hover:underline">
-                    Open series
-                  </Link>
-                </div>
-              ))}
+                ) : (
+                  recentSeries.map((series) => (
+                    <div key={series.id} className="p-4 hover:bg-muted/30 transition-colors">
+                      <div className="flex items-start justify-between gap-2 mb-1">
+                        <Link href={`/series/${series.id}`} className="font-medium hover:text-primary hover:underline line-clamp-1">
+                          Series {series.number}{series.title ? ` — ${series.title}` : ''}
+                        </Link>
+                        <span className="text-[10px] uppercase tracking-wider font-semibold bg-primary/10 text-primary px-1.5 py-0.5 rounded">New</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground mb-2">
+                        {series.lecture_name} · {series.semester} {series.year}
+                      </div>
+                      <FileBadges
+                        pdfFile={series.pdf_file}
+                        texFile={series.tex_file}
+                        solutionFile={series.solution_file}
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

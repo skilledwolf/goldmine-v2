@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Search as SearchIcon, User, X, Save, BookOpen, Eye, ArrowRight } from 'lucide-react';
 import { apiFetch, getApiBase } from '@/lib/api';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -308,89 +309,107 @@ export default function SearchPage() {
   }, [lectureId, year, semester, professor, q, lectures]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Search</h1>
-          <p className="text-sm text-muted-foreground">Find lectures, series, or exercises.</p>
+        <div className="space-y-1">
+          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">Search</h1>
+          <p className="text-muted-foreground">Find lectures, series, or specific exercises across Gold Mine.</p>
         </div>
       </div>
 
-      <form onSubmit={handleSearch} className="grid gap-3 md:grid-cols-5 md:items-end">
-        <div className="md:col-span-2">
-          <label className="text-sm font-medium text-foreground">Query</label>
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="e.g. QM1, Fourier, HS2020"
-            list="lecture-suggestions"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium text-foreground">Lecture</label>
-          <select
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={lectureId}
-            onChange={(e) => setLectureId(e.target.value)}
-          >
-            <option value="all">All lectures</option>
-            {lectures.map((l) => (
-              <option key={l.id} value={String(l.id)}>
-                {l.name} — {l.long_name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium text-foreground">Year</label>
-          <select
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={year || 'any'}
-            onChange={(e) => setYear(e.target.value === 'any' ? '' : e.target.value)}
-          >
-            <option value="any">Any year</option>
-            {years.map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium text-foreground">Semester</label>
-          <select
-            className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-            value={semester}
-            onChange={(e) => setSemester(e.target.value)}
-          >
-            <option value="any">Any</option>
-            <option value="HS">HS</option>
-            <option value="FS">FS</option>
-          </select>
-        </div>
-        <div className="md:col-span-5 grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <div>
-            <label className="text-sm font-medium text-foreground">Professor (optional)</label>
-            <Input
-              value={professor}
-              onChange={(e) => setProfessor(e.target.value)}
-              placeholder="e.g. Beisert"
-            />
+      <div className="rounded-xl border border-primary/10 bg-card/50 backdrop-blur-sm shadow-sm md:p-6 p-4">
+        <form onSubmit={handleSearch} className="grid gap-6 md:grid-cols-5 md:items-end">
+          <div className="md:col-span-2 space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Query</label>
+            <div className="relative">
+              <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="e.g. QM1, Fourier, HS2020"
+                list="lecture-suggestions"
+                className="pl-9 bg-background/50 border-primary/20 focus-visible:ring-primary"
+              />
+            </div>
           </div>
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              className="h-4 w-4"
-              checked={autoSearch}
-              onChange={(e) => setAutoSearch(e.target.checked)}
-            />
-            Auto-search
-          </label>
-          <Button type="submit" disabled={loading}>
-            {loading ? 'Searching…' : 'Search'}
-          </Button>
-        </div>
-      </form>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Lecture</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-primary/20 bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={lectureId}
+              onChange={(e) => setLectureId(e.target.value)}
+            >
+              <option value="all">All lectures</option>
+              {lectures.map((l) => (
+                <option key={l.id} value={String(l.id)}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Year</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-primary/20 bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={year || 'any'}
+              onChange={(e) => setYear(e.target.value === 'any' ? '' : e.target.value)}
+            >
+              <option value="any">Any year</option>
+              {years.map((y) => (
+                <option key={y} value={String(y)}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Semester</label>
+            <select
+              className="flex h-10 w-full rounded-md border border-primary/20 bg-background/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              value={semester}
+              onChange={(e) => setSemester(e.target.value)}
+            >
+              <option value="any">Any</option>
+              <option value="HS">HS</option>
+              <option value="FS">FS</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-5 grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-end pt-2 border-t border-border/50">
+            <div className="space-y-2">
+              <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Professor (optional)</label>
+              <div className="relative">
+                <User className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Input
+                  value={professor}
+                  onChange={(e) => setProfessor(e.target.value)}
+                  placeholder="e.g. Beisert"
+                  className="pl-9 bg-background/50 border-primary/20"
+                />
+              </div>
+            </div>
+            <div className="flex items-center space-x-2 pb-2">
+              <input
+                type="checkbox"
+                id="auto-search"
+                className="h-4 w-4 rounded border-primary/20 text-primary focus:ring-primary"
+                checked={autoSearch}
+                onChange={(e) => setAutoSearch(e.target.checked)}
+              />
+              <label
+                htmlFor="auto-search"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Auto-search
+              </label>
+            </div>
+            <Button type="submit" disabled={loading} className="w-full md:w-auto shadow-md shadow-primary/20">
+              {loading ? 'Searching…' : 'Search'}
+            </Button>
+          </div>
+        </form>
+      </div>
 
       <datalist id="lecture-suggestions">
         {lectures.map((l) => (
@@ -399,93 +418,114 @@ export default function SearchPage() {
       </datalist>
 
       {activeFilters.length > 0 && (
-        <div className="flex flex-wrap gap-2 text-xs">
+        <div className="flex flex-wrap gap-2 text-xs animate-in slide-in-from-left-2 fade-in">
           {activeFilters.map((filter, idx) => (
             <button
               key={`${filter.label}-${idx}`}
               type="button"
-              className="rounded-full border border-input bg-background px-2 py-1 text-muted-foreground hover:text-foreground"
+              className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-primary hover:bg-primary/10 transition-colors"
               onClick={filter.onClear}
             >
-              {filter.label} ✕
+              {filter.label} <X className="ml-1.5 h-3 w-3" />
             </button>
           ))}
         </div>
       )}
 
-      <div className="rounded-md border bg-muted/20 p-3 space-y-2">
-        <div className="text-sm font-semibold">Saved searches</div>
-        <div className="flex flex-wrap gap-2">
-          <Input
-            value={saveName}
-            onChange={(e) => setSaveName(e.target.value)}
-            placeholder="Name this search"
-            className="max-w-xs"
-          />
-          <Button type="button" variant="secondary" onClick={handleSaveSearch}>
-            Save current
-          </Button>
+      <div className="rounded-xl border border-border/50 bg-muted/20 p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+          <Save className="h-4 w-4" />
+          Saved searches
         </div>
-        {savedSearches.length === 0 && (
-          <div className="text-xs text-muted-foreground">No saved searches yet.</div>
-        )}
-        {savedSearches.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {savedSearches.map((entry) => (
-              <div key={entry.id} className="flex items-center gap-2 rounded-full border px-3 py-1 text-xs">
+        <div className="flex flex-wrap gap-3 items-center">
+          {savedSearches.length === 0 ? (
+            <div className="text-xs text-muted-foreground italic">You haven't saved any searches yet.</div>
+          ) : (
+            savedSearches.map((entry) => (
+              <div key={entry.id} className="group flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs shadow-sm hover:shadow-md transition-all">
                 <button
                   type="button"
-                  className="text-primary hover:underline"
+                  className="text-foreground hover:text-primary font-medium"
                   onClick={() => applySavedSearch(entry)}
                 >
                   {entry.name}
                 </button>
+                <div className="h-3 w-px bg-border mx-1" />
                 <button
                   type="button"
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted-foreground hover:text-destructive opacity-50 group-hover:opacity-100 transition-opacity"
                   onClick={() => removeSavedSearch(entry.id)}
                   aria-label={`Remove saved search ${entry.name}`}
                 >
-                  ✕
+                  <X className="h-3 w-3" />
                 </button>
               </div>
-            ))}
+            ))
+          )}
+          <div className="h-4 w-px bg-border mx-2 hidden md:block" />
+          <div className="flex items-center gap-2 flex-1 md:flex-none">
+            <Input
+              value={saveName}
+              onChange={(e) => setSaveName(e.target.value)}
+              placeholder="Name this search"
+              className="h-8 w-40 text-xs bg-background"
+            />
+            <Button type="button" variant="ghost" size="sm" onClick={handleSaveSearch} disabled={!saveName.trim()}>
+              Save
+            </Button>
           </div>
-        )}
+        </div>
       </div>
 
-      {error && <div className="text-destructive">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive">
+          {error}
+        </div>
+      )}
 
       {loading && renderLoading()}
 
       {!loading && !results && hasSearched && !error && (
-        <div className="text-sm text-muted-foreground">No results yet. Adjust filters and search again.</div>
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="rounded-full bg-muted/50 p-4 mb-4">
+            <SearchIcon className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <p className="text-muted-foreground">No results found. Try adjusting your filters.</p>
+        </div>
       )}
 
       {!loading && sortedResults && (
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2">
-            {(['lectures', 'series', 'exercises'] as const).map((t) => {
-              const counts = {
-                lectures: sortedResults.lectures.length,
-                series: sortedResults.series.length,
-                exercises: sortedResults.exercises.length,
-              };
-              return (
-                <Button
-                  key={t}
-                  variant={tab === t ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setTab(t)}
-                >
-                  {t.charAt(0).toUpperCase() + t.slice(1)} ({counts[t]})
-                </Button>
-              );
-            })}
-            <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Sort</span>
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-4">
+            <div className="flex items-center gap-1 rounded-lg bg-muted/50 p-1">
+              {(['lectures', 'series', 'exercises'] as const).map((t) => {
+                const counts = {
+                  lectures: sortedResults.lectures.length,
+                  series: sortedResults.series.length,
+                  exercises: sortedResults.exercises.length,
+                };
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setTab(t)}
+                    className={`
+                        relative rounded-md px-3 py-1.5 text-sm font-medium transition-all
+                        ${tab === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}
+                    `}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                    <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] ${tab === t ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                      {counts[t]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Sort by:</span>
               <select
-                className="rounded-md border border-input bg-background px-2 py-1 text-xs text-foreground"
+                className="rounded-md border border-input bg-transparent px-2 py-1 text-sm font-medium text-foreground focus:ring-0"
                 value={sort}
                 onChange={(e) => setSort(e.target.value as typeof sort)}
               >
@@ -500,97 +540,109 @@ export default function SearchPage() {
           </div>
 
           {tab === 'lectures' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Lectures ({sortedResults.lectures.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {sortedResults.lectures.length === 0 && <div className="text-sm text-muted-foreground">No lecture matches.</div>}
-                {sortedResults.lectures.map((lec) => (
-                  <div key={lec.id} className="flex items-center justify-between border-b last:border-none pb-2 last:pb-0">
-                    <div>
-                      <div className="font-medium">{highlightText(lec.long_name)}</div>
-                      <div className="text-xs text-muted-foreground">/{lec.name}</div>
-                    </div>
-                    <Link href={`/lectures/${lec.id}`} className="text-sm text-primary hover:underline">Open</Link>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {sortedResults.lectures.length === 0 && <div className="col-span-full text-center py-12 text-muted-foreground">No lecture matches found.</div>}
+              {sortedResults.lectures.map((lec) => (
+                <Link key={lec.id} href={`/lectures/${lec.id}`}>
+                  <Card className="h-full hover:border-primary/50 hover:shadow-md transition-all group">
+                    <CardHeader>
+                      <CardTitle className=" text-lg group-hover:text-primary transition-colors flex items-center gap-2">
+                        <BookOpen className="h-5 w-5 text-muted-foreground group-hover:text-primary" />
+                        {highlightText(lec.long_name)}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-sm text-muted-foreground font-mono bg-muted/30 px-2 py-1 rounded w-fit">/{lec.name}</div>
+                      <div className="mt-4 flex items-center text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                        View Details <span className="ml-1 transition-transform group-hover:translate-x-1">→</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              ))}
+            </div>
           )}
 
           {tab === 'series' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Series ({sortedResults.series.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {sortedResults.series.length === 0 && <div className="text-sm text-muted-foreground">No series matches.</div>}
-                {sortedResults.series.map((s) => (
-                  <div key={s.id} className="flex items-center justify-between border-b last:border-none pb-2 last:pb-0 gap-3">
-                    <div className="space-y-1">
-                      <div className="font-medium leading-tight">
-                        Series {s.number}
-                        {s.title && <> — {highlightText(s.title)}</>}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {s.lecture_name} · {s.semester}{s.year}
-                      </div>
+            <div className="grid gap-4">
+              {sortedResults.series.length === 0 && <div className="text-center py-12 text-muted-foreground">No series matches found.</div>}
+              {sortedResults.series.map((s) => (
+                <div key={s.id} className="group flex flex-col md:flex-row md:items-center justify-between gap-4 rounded-xl border p-4 hover:border-primary/50 hover:bg-muted/10 transition-all">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-lg">Series {s.number}</span>
+                      {s.title && <span className="text-muted-foreground">— {highlightText(s.title)}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <span className="font-medium text-foreground">{s.lecture_name}</span>
+                      <span>•</span>
+                      <span>{s.semester}{s.year}</span>
+                    </div>
+                    <div className="pt-2">
                       <FileBadges
                         pdfFile={s.pdf_file}
                         texFile={s.tex_file}
                         solutionFile={s.solution_file}
                       />
-                      <div className="flex gap-3 text-sm">
-                        <Link href={`/series/${s.id}`} className="text-primary hover:underline">Open</Link>
-                        {s.solution_file && (
-                          <a
-                            href={`${apiBase}/files/${s.id}/solution`}
-                            className="text-primary hover:underline"
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Solutions
-                          </a>
-                        )}
-                      </div>
                     </div>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
+                  <div className="flex items-center gap-3">
+                    {s.solution_file && (
+                      <Button variant="ghost" size="sm" asChild>
+                        <a
+                          href={`${apiBase}/files/${s.id}/solution`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="gap-2"
+                        >
+                          <Eye className="h-4 w-4" /> Solutions
+                        </a>
+                      </Button>
+                    )}
+                    <Button size="sm" asChild className="gap-2 shadow-sm">
+                      <Link href={`/series/${s.id}`}>
+                        Open Series <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
 
           {tab === 'exercises' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Exercises ({sortedResults.exercises.length})</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {sortedResults.exercises.length === 0 && <div className="text-sm text-muted-foreground">No exercise matches.</div>}
-                {sortedResults.exercises.map((ex) => (
-                  <div key={ex.id} className="rounded-md border p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="font-semibold">Ex {ex.number}: {ex.title ? highlightText(ex.title) : 'Untitled'}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {ex.lecture_name} · {ex.semester}{ex.year} · Series {ex.series_number}
+            <div className="grid gap-4 md:grid-cols-2">
+              {sortedResults.exercises.length === 0 && <div className="col-span-full text-center py-12 text-muted-foreground">No exercise matches found.</div>}
+              {sortedResults.exercises.map((ex) => (
+                <Card key={ex.id} className="hover:border-primary/50 transition-all">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base font-semibold">
+                          Exercise {ex.number}: {ex.title ? highlightText(ex.title) : <span className="italic text-muted-foreground">Untitled</span>}
+                        </CardTitle>
+                        <div className="text-xs text-muted-foreground">
+                          {ex.lecture_name} · {ex.semester}{ex.year} · Series {ex.series_number}
+                        </div>
                       </div>
                     </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     {ex.snippet_html && (
-                      <p
-                        className="mt-2 text-sm text-foreground/90 line-clamp-3"
+                      <div
+                        className="text-sm text-muted-foreground line-clamp-2 bg-muted/20 p-3 rounded-md italic"
                         dangerouslySetInnerHTML={{ __html: ex.snippet_html }}
                       />
                     )}
-                    <div className="mt-2 flex gap-3 text-sm">
-                      <Link href={`/series/${ex.series_id}`} className="text-primary hover:underline">
-                        Go to series
+                    <Button variant="outline" size="sm" asChild className="w-full">
+                      <Link href={`/series/${ex.series_id}`}>
+                        Go to Series
                       </Link>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           )}
         </div>
       )}

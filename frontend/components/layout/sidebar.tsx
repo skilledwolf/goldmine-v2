@@ -89,42 +89,46 @@ export function Sidebar() {
     return (
         <div
             className={cn(
-                "flex h-screen flex-col justify-between border-r bg-card py-4 transition-all duration-200",
-                collapsed ? "w-16 px-2" : "w-64 px-3"
+                "flex h-screen flex-col justify-between border-r border-border/50 bg-sidebar/80 backdrop-blur-md py-4 transition-all duration-300 ease-in-out",
+                collapsed ? "w-20 px-2" : "w-72 px-4"
             )}
         >
             <div className="space-y-6">
-                <div className={cn("flex items-center", collapsed ? "justify-center px-2" : "px-4")}>
-                    <Mountain className="h-6 w-6 text-primary" />
+                <div className={cn("flex items-center", collapsed ? "justify-center" : "px-2")}>
+                    <div className="rounded-xl bg-primary/10 p-2">
+                        <Mountain className="h-6 w-6 text-primary" />
+                    </div>
                     {!collapsed && (
-                        <span className="ml-2 text-lg font-bold tracking-tight">Gold Mine V2</span>
+                        <span className="ml-3 text-lg font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+                            Gold Mine
+                        </span>
                     )}
                     <Button
                         variant="ghost"
                         size="icon-sm"
-                        className={cn("ml-auto", collapsed && "ml-0")}
+                        className={cn("ml-auto hover:bg-primary/10 hover:text-primary", collapsed && "ml-0 absolute -right-3 top-6 z-50 h-6 w-6 rounded-full border bg-background shadow-md")}
                         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
                         onClick={() => setCollapsed((value) => !value)}
                     >
-                        {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+                        {collapsed ? <PanelLeftOpen className="h-3 w-3" /> : <PanelLeftClose className="h-4 w-4" />}
                     </Button>
                 </div>
 
-                <nav className="space-y-1">
+                <nav className="space-y-2">
                     {sidebarItems.map((item) => (
                         <Link
                             key={item.href}
                             href={item.href}
                             className={cn(
-                                "flex items-center rounded-md px-4 py-2.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+                                "group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
                                 pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
-                                    ? "bg-primary/10 text-primary hover:bg-primary/20"
-                                    : "text-muted-foreground",
+                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
                                 collapsed && "justify-center px-2"
                             )}
                             title={collapsed ? item.name : undefined}
                         >
-                            <item.icon className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                            <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", !collapsed && "mr-3")} />
                             {!collapsed && <span>{item.name}</span>}
                             {collapsed && <span className="sr-only">{item.name}</span>}
                         </Link>

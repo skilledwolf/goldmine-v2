@@ -142,81 +142,96 @@ export default function IssuesPage() {
   const total = filtered.length;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-border/50 pb-6">
         <div>
-          <p className="text-sm text-muted-foreground">Staff only</p>
-          <h1 className="text-2xl font-semibold">Series Issues</h1>
-          <p className="text-sm text-muted-foreground">{total} series with problems</p>
+          <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Staff only</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent">
+              Series Issues
+            </h1>
+            <div className="rounded-full bg-destructive/10 px-3 py-1 text-sm font-medium text-destructive">
+              {total} found
+            </div>
+          </div>
+          <p className="text-muted-foreground mt-2">
+            Overview of configuration errors, missing files, and render failures.
+          </p>
         </div>
-        <Button size="sm" variant="outline" onClick={() => mutate()} className="gap-2">
+        <Button size="sm" variant="outline" onClick={() => mutate()} className="gap-2 self-start md:self-center shadow-sm hover:bg-muted">
           <RefreshCw className="h-4 w-4" /> Refresh
         </Button>
       </div>
 
-      <Card>
-        <CardContent className="space-y-3 py-4">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-              Search
+      <div className="space-y-6">
+        <div className="rounded-xl border border-primary/10 bg-card/50 p-4 shadow-sm backdrop-blur-sm space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1">
               <input
                 type="search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
-                placeholder="Lecture, series title, number…"
+                className="w-full rounded-md border border-input bg-background/50 pl-9 pr-4 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all placeholder:text-muted-foreground"
+                placeholder="Search lecture, series title, number..."
               />
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-              Lecture
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                <span className="text-xs">🔍</span>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
               <select
                 value={lectureFilter}
                 onChange={(e) =>
                   setLectureFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))
                 }
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               >
-                <option value="all">All</option>
+                <option value="all">All Lectures</option>
                 {availableLectures.map(([id, name]) => (
                   <option key={id} value={id}>
                     {name}
                   </option>
                 ))}
               </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-              Semester
               <select
                 value={semesterFilter}
                 onChange={(e) => setSemesterFilter(e.target.value as typeof semesterFilter)}
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               >
-                <option value="all">All</option>
+                <option value="all">All Semesters</option>
                 <option value="HS">HS</option>
                 <option value="FS">FS</option>
               </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-              Year
               <select
                 value={yearFilter}
                 onChange={(e) =>
                   setYearFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))
                 }
-                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                className="rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
               >
-                <option value="all">All</option>
+                <option value="all">All Years</option>
                 {availableYears.map((year) => (
                   <option key={year} value={year}>
                     {year}
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           </div>
 
-          <div className="space-y-2">
-            <div className="text-xs font-medium text-muted-foreground">Issue types</div>
+          <div className="space-y-2 pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-muted-foreground">Filter by issue type</div>
+              {issueFilter.length > 0 && (
+                <button
+                  type="button"
+                  className="text-xs text-primary underline-offset-2 hover:underline"
+                  onClick={() => setIssueFilter([])}
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2">
               {availableIssueTypes.map((issue) => {
                 const active = issueFilter.includes(issue);
@@ -229,172 +244,183 @@ export default function IssuesPage() {
                         prev.includes(issue) ? prev.filter((x) => x !== issue) : [...prev, issue]
                       )
                     }
-                    className={`rounded-full border px-2 py-1 text-xs ${
-                      active
-                        ? 'border-primary bg-primary/10 text-primary'
-                        : 'border-input bg-background text-muted-foreground hover:border-primary/50'
-                    }`}
+                    className={`rounded-full border px-3 py-1 text-xs transition-colors ${active
+                        ? 'border-destructive bg-destructive/10 text-destructive'
+                        : 'border-input bg-background/50 text-muted-foreground hover:border-destructive/30 hover:text-foreground'
+                      }`}
                   >
                     {ISSUE_LABELS[issue] || issue}
                   </button>
                 );
               })}
               {availableIssueTypes.length === 0 && (
-                <span className="text-xs text-muted-foreground">No issue types found</span>
+                <span className="text-xs text-muted-foreground italic">No unique issue types found.</span>
               )}
             </div>
-            {issueFilter.length > 0 && (
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <span className="text-xs text-muted-foreground">
+              Showing {filtered.length} of {data?.length || 0} items
+            </span>
+            <div className="flex rounded-md shadow-sm">
               <button
                 type="button"
-                className="text-xs text-primary underline-offset-2 hover:underline"
-                onClick={() => setIssueFilter([])}
-              >
-                Clear issue filters
-              </button>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <span className="text-xs font-medium text-muted-foreground">View</span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={groupedView ? 'secondary' : 'outline'}
-                className="gap-1"
+                className={`flex items-center gap-1 rounded-l-md border px-3 py-1.5 text-xs font-medium transition-colors ${groupedView
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-input hover:bg-muted text-muted-foreground'
+                  }`}
                 onClick={() => setGroupedView(true)}
               >
-                <LayoutPanelTop className="h-4 w-4" /> Grouped
-              </Button>
-              <Button
+                <LayoutPanelTop className="h-3.5 w-3.5" /> Grouped
+              </button>
+              <button
                 type="button"
-                size="sm"
-                variant={!groupedView ? 'secondary' : 'outline'}
-                className="gap-1"
+                className={`flex items-center gap-1 rounded-r-md border-y border-r px-3 py-1.5 text-xs font-medium transition-colors ${!groupedView
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background border-input hover:bg-muted text-muted-foreground'
+                  }`}
                 onClick={() => setGroupedView(false)}
               >
-                <Rows className="h-4 w-4" /> Flat list
-              </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              Showing {filtered.length} of {data?.length || 0}
+                <Rows className="h-3.5 w-3.5" /> List
+              </button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {filtered.length === 0 ? (
-        <Card>
-          <CardContent className="py-6 text-sm text-muted-foreground">
-            No issues detected. 🎉
-          </CardContent>
-        </Card>
-      ) : groupedView ? (
-        grouped.map((group) => (
-          <Card key={group.key} className="border-primary/20">
-            <CardContent className="space-y-3 py-4">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">{group.label}</div>
-                <div className="text-xs text-muted-foreground">
-                  {group.items.length} issue{group.items.length === 1 ? '' : 's'}
+
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 rounded-xl border border-dashed border-border/50 bg-card/30">
+            <div className="h-16 w-16 rounded-full bg-green-500/10 flex items-center justify-center mb-4">
+              <ShieldAlert className="h-8 w-8 text-green-500" />
+            </div>
+            <h3 className="text-lg font-semibold">No issues found</h3>
+            <p className="text-muted-foreground text-sm">Everything looks good with your current filters.</p>
+          </div>
+        ) : groupedView ? (
+          <div className="grid gap-6">
+            {grouped.map((group) => (
+              <div key={group.key} className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-primary/50" />
+                  <h3 className="text-md font-semibold text-foreground">{group.label}</h3>
+                  <span className="text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                    {group.items.length}
+                  </span>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {group.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="group relative flex flex-col justify-between rounded-lg border border-destructive/20 bg-card hover:border-destructive/40 transition-colors p-4 shadow-sm"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <span className="font-mono text-xs font-medium text-muted-foreground">Series {item.number}</span>
+                          <a
+                            href={`/series/${item.id}`}
+                            className="text-xs font-medium text-primary hover:underline"
+                          >
+                            View →
+                          </a>
+                        </div>
+                        <h4 className="font-semibold text-sm line-clamp-2" title={item.title}>
+                          {item.title || 'Untitled Series'}
+                        </h4>
+
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {item.issues.map((issue) => (
+                            <span
+                              key={issue}
+                              className="inline-flex rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400 border border-red-500/20"
+                            >
+                              {ISSUE_LABELS[issue] || issue}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-border/50 grid grid-cols-2 gap-2 text-[10px] text-muted-foreground font-mono">
+                        <div className="flex flex-col">
+                          <span className="opacity-50">TeX Status</span>
+                          <span className={item.tex_file ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                            {item.tex_file ? 'Present' : 'Missing'}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="opacity-50">PDF Status</span>
+                          <span className={item.pdf_file ? 'text-green-600 dark:text-green-400' : 'text-red-500'}>
+                            {item.pdf_file ? 'Present' : 'Missing'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="divide-y rounded-md border">
-                {group.items.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid gap-2 px-3 py-3 sm:grid-cols-[90px,1fr] sm:items-center"
-                  >
-                    <div className="text-sm font-medium">
-                      Series {item.number}
-                      {item.title ? ` — ${item.title}` : ''}
-                    </div>
-                    <div className="space-y-1 text-sm">
-                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                        <span className="rounded bg-secondary/50 px-2 py-0.5">
-                          fs_path: {item.fs_path || '—'}
-                        </span>
-                        <span className="rounded bg-secondary/50 px-2 py-0.5">
-                          tex: {item.tex_file || '—'}
-                        </span>
-                        <span className="rounded bg-secondary/50 px-2 py-0.5">
-                          pdf: {item.pdf_file || '—'}
-                        </span>
-                        <span className="rounded bg-secondary/50 px-2 py-0.5">
-                          sol: {item.solution_file || '—'}
-                        </span>
-                        {item.render_status && (
-                          <span className="rounded bg-secondary/50 px-2 py-0.5">
-                            render: {item.render_status}
-                          </span>
-                        )}
-                      </div>
-                      {renderIssues(item.issues)}
-                      <div className="text-xs">
-                        <a
-                          href={`/series/${item.id}`}
-                          className="text-primary underline-offset-2 hover:underline"
-                        >
-                          Open series
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
+            ))}
+          </div>
+        ) : (
+          <Card className="overflow-hidden border-border/50">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground font-medium">
+                  <tr>
+                    <th className="px-4 py-3">Lecture</th>
+                    <th className="px-4 py-3">Series</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Issues</th>
+                    <th className="px-4 py-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50">
+                  {filtered.map((item) => (
+                    <tr key={item.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-foreground">{item.lecture_name}</div>
+                        <div className="text-xs text-muted-foreground">{item.semester}{item.year}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">Series {item.number}</div>
+                        <div className="text-xs text-muted-foreground truncate w-40">{item.title}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex gap-2 text-xs font-mono">
+                          <span className={item.tex_file ? 'text-green-600' : 'text-red-500'} title="TeX File">T</span>
+                          <span className={item.pdf_file ? 'text-green-600' : 'text-red-500'} title="PDF File">P</span>
+                          <span className={item.solution_file ? 'text-green-600' : 'text-muted-foreground'} title="Solution">S</span>
+                          <span className={item.render_status === 'ok' ? 'text-green-600' : 'text-orange-500'} title="Render Status">R</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {item.issues.slice(0, 2).map((i) => (
+                            <span key={i} className="rounded bg-destructive/10 px-1.5 py-0.5 text-[10px] text-destructive border border-destructive/20">
+                              {ISSUE_LABELS[i] || i}
+                            </span>
+                          ))}
+                          {item.issues.length > 2 && (
+                            <span className="text-[10px] text-muted-foreground">+{item.issues.length - 2} more</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button size="sm" variant="ghost" className="h-8 w-8 p-0" asChild>
+                          <a href={`/series/${item.id}`} className="text-muted-foreground hover:text-primary">
+                            <span className="sr-only">Open</span>
+                            →
+                          </a>
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Card>
-        ))
-      ) : (
-        <div className="overflow-auto rounded-md border">
-          <table className="min-w-full text-sm">
-            <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2">Lecture / Term</th>
-                <th className="px-3 py-2">Series</th>
-                <th className="px-3 py-2">Files</th>
-                <th className="px-3 py-2">Issues</th>
-                <th className="px-3 py-2">Link</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-muted/30">
-                  <td className="px-3 py-2 align-top">
-                    <div className="font-medium">{item.lecture_name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.semester}
-                      {item.year}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="font-medium">
-                      Series {item.number}
-                      {item.title ? ` — ${item.title}` : ''}
-                    </div>
-                    <div className="text-xs text-muted-foreground">fs_path: {item.fs_path || '—'}</div>
-                  </td>
-                  <td className="px-3 py-2 align-top text-xs text-muted-foreground">
-                    <div>tex: {item.tex_file || '—'}</div>
-                    <div>pdf: {item.pdf_file || '—'}</div>
-                    <div>sol: {item.solution_file || '—'}</div>
-                    {item.render_status && <div>render: {item.render_status}</div>}
-                  </td>
-                  <td className="px-3 py-2 align-top">{renderIssues(item.issues)}</td>
-                  <td className="px-3 py-2 align-top text-xs">
-                    <a
-                      href={`/series/${item.id}`}
-                      className="text-primary underline-offset-2 hover:underline"
-                    >
-                      Open
-                    </a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
