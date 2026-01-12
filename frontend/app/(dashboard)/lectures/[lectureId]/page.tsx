@@ -37,6 +37,7 @@ type SemesterGroup = {
   year: number;
   semester: string;
   professors: string;
+  fs_path?: string;
   series: Series[];
 };
 
@@ -149,11 +150,24 @@ export default function LectureDetailPage() {
         {filteredGroups.map((sg) => (
           <Card key={sg.id}>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>{lecture.name} {sg.semester}{sg.year}</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  Professors: {sg.professors || 'n/a'}
-                </span>
+              <CardTitle className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-lg font-semibold">{lecture.name} {sg.semester}{sg.year}</div>
+                  <div className="text-sm font-normal text-muted-foreground">
+                    Professors: {sg.professors || 'n/a'}
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" variant="outline" asChild>
+                    <a
+                      href={`${apiBase}/files/semester/${sg.id}/zip`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Download semester zip
+                    </a>
+                  </Button>
+                </div>
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">

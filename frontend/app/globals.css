@@ -124,6 +124,13 @@
     @apply bg-background text-foreground;
   }
 
+  mark {
+    background: color-mix(in oklch, var(--primary) 18%, transparent);
+    color: var(--foreground);
+    padding: 0 0.2rem;
+    border-radius: 0.2rem;
+  }
+
   /* Make rendered TeX easier to read */
   .prose-exercise {
     counter-reset: var(--gm-counter-reset, exercise figure);

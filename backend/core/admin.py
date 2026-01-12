@@ -36,7 +36,7 @@ class SeriesAdmin(admin.ModelAdmin):
 @admin.register(Exercise)
 class ExerciseAdmin(admin.ModelAdmin):
     list_display = ('__str__', 'series', 'number')
-    search_fields = ('title', 'text_content')
+    search_fields = ('title', 'search_text')
     list_filter = ('series__semester_group__lecture',)
 
 @admin.register(UserComment)

@@ -81,7 +81,6 @@ export function Sidebar() {
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
         { name: 'Lectures', href: '/lectures', icon: BookOpen },
         { name: 'Search', href: '/search', icon: Search },
-        ...(isStaff ? [{ name: 'Issues', href: '/issues', icon: Shield }] : []),
         // { name: 'Exercises', href: '/exercises', icon: Dumbbell },
         // { name: 'Settings', href: '/settings', icon: Settings },
     ];
@@ -133,6 +132,38 @@ export function Sidebar() {
             </div>
 
             <div className={cn("space-y-1", collapsed ? "px-2" : "px-3")}>
+                <Button
+                    variant="ghost"
+                    className={cn(
+                        "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                        collapsed && "justify-center px-2"
+                    )}
+                    asChild
+                    title={collapsed ? "Info" : undefined}
+                >
+                    <Link href="/info">
+                        <Mountain className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                        {!collapsed && "Info"}
+                        {collapsed && <span className="sr-only">Info</span>}
+                    </Link>
+                </Button>
+                {isStaff && (
+                    <Button
+                        variant="ghost"
+                        className={cn(
+                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                            collapsed && "justify-center px-2"
+                        )}
+                        asChild
+                        title={collapsed ? "Issues" : undefined}
+                    >
+                        <Link href="/issues">
+                            <Shield className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                            {!collapsed && "Issues"}
+                            {collapsed && <span className="sr-only">Issues</span>}
+                        </Link>
+                    </Button>
+                )}
                 {isStaff && (
                     <Button
                         variant="ghost"

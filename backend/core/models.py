@@ -87,9 +87,12 @@ class Exercise(models.Model):
     number = models.IntegerField(help_text="Exercise number within series")
     title = models.CharField(max_length=1024, blank=True)
     
-    # Text content (LaTeX/Markdown)
+    # Text content (legacy import; not the primary search source)
     # Using standard TextField because modern Postgres handles UTF-8 properly
     text_content = models.TextField(blank=True)
+
+    # Searchable text derived from rendered HTML/TeX
+    search_text = models.TextField(blank=True, default="")
     
     # For future semantic search (requires pgvector extension)
     # embedding = VectorField(dimensions=1536, null=True, blank=True) 

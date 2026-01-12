@@ -1,9 +1,17 @@
 from typing import List, Optional
+import html
 from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
 from django.db.models import Prefetch, Q
+from django.contrib.postgres.search import (
+    SearchHeadline,
+    SearchQuery,
+    SearchRank,
+    SearchVector,
+    TrigramSimilarity,
+)
 from django.shortcuts import get_object_or_404
 from ninja import NinjaAPI, Schema
 from ninja.errors import HttpError
@@ -49,12 +57,14 @@ class SemesterGroupListSchema(Schema):
     id: int
     year: int
     semester: str
+    fs_path: str = ""
 
 class SemesterGroupSchema(Schema):
     id: int
     year: int
     semester: str
     professors: str
+    fs_path: str = ""
     series: List[SeriesSchema]
 
 class LectureListSchema(Schema):
@@ -70,23 +80,59 @@ class LectureSchema(Schema):
     semester_groups: List[SemesterGroupSchema]
 
 
+class LectureSearchSchema(Schema):
+    id: int
+    name: str
+    long_name: str
+
+
+class SeriesSearchSchema(Schema):
+    id: int
+    number: int
+    title: str = ""
+    tex_file: str = ""
+    pdf_file: str = ""
+    solution_file: str = ""
+    lecture_name: str = ""
+    semester: str = ""
+    year: int = 0
+    lecture_id: int = 0
+
+
 class ExerciseResultSchema(Schema):
     id: int
     number: int
     title: str
-    text_content: str
     series_id: int
     series_number: int
     lecture_id: int
     lecture_name: str
     semester: str
     year: int
+    snippet_html: str = ""
 
 
 class SearchResponseSchema(Schema):
-    lectures: List[LectureListSchema]
-    series: List[SeriesSchema]
+    lectures: List[LectureSearchSchema]
+    series: List[SeriesSearchSchema]
     exercises: List[ExerciseResultSchema]
+
+
+SEARCH_HEADLINE_START = "<<<gmhl>>>"
+SEARCH_HEADLINE_END = "<<<gmhl_end>>>"
+
+
+def _safe_snippet(headline: str | None) -> str:
+    if not headline:
+        return ""
+    placeholder_start = "__GMHL_START__"
+    placeholder_end = "__GMHL_END__"
+    prepared = (
+        headline.replace(SEARCH_HEADLINE_START, placeholder_start)
+        .replace(SEARCH_HEADLINE_END, placeholder_end)
+    )
+    escaped = html.escape(prepared, quote=False)
+    return escaped.replace(placeholder_start, "<mark>").replace(placeholder_end, "</mark>")
 
 
 class LectureCreateSchema(Schema):
@@ -246,13 +292,26 @@ def search(
     professor: Optional[str] = None,
 ):
     """
-    Basic search across lectures, series, and exercises.
-    - q matches lecture name/long_name, series title/number, exercise title/text.
+    Search across lectures, series, and exercises.
+    - q uses Postgres full-text search against rendered HTML-derived text.
     - lecture_id/year/semester/professor narrow the scope.
     """
+    q = (q or "").strip()
+    semester = semester.upper() if semester else None
+
     lect_qs = Lecture.objects.all().prefetch_related('semester_groups')
     if q:
-        lect_qs = lect_qs.filter(Q(name__icontains=q) | Q(long_name__icontains=q))
+        search_query = SearchQuery(q, search_type="websearch", config="simple")
+        vector = (
+            SearchVector("name", weight="A", config="simple")
+            + SearchVector("long_name", weight="B", config="simple")
+        )
+        rank = SearchRank(vector, search_query, cover_density=True)
+        similarity = TrigramSimilarity("name", q) + TrigramSimilarity("long_name", q)
+        lect_qs = lect_qs.annotate(rank=rank, similarity=similarity).filter(
+            Q(rank__gte=0.05) | Q(similarity__gte=0.2)
+        )
+        lect_qs = lect_qs.order_by("-rank", "-similarity")
 
     sg_filters = {}
     if lecture_id:
@@ -263,31 +322,79 @@ def search(
         sg_filters["semester__iexact"] = semester
     if professor:
         sg_filters["professors__icontains"] = professor
+    semester_groups = SemesterGroup.objects.filter(**sg_filters) if sg_filters else None
 
-    series_qs = Series.objects.select_related('semester_group__lecture').prefetch_related('exercises')
-    if sg_filters:
-        series_qs = series_qs.filter(semester_group__in=SemesterGroup.objects.filter(**sg_filters))
+    series_qs = Series.objects.select_related('semester_group__lecture')
+    if semester_groups is not None:
+        series_qs = series_qs.filter(semester_group__in=semester_groups)
     if q:
         number_filter = Q()
         try:
             number_filter = Q(number=int(q))
         except (TypeError, ValueError):
             number_filter = Q()
-        series_qs = series_qs.filter(Q(title__icontains=q) | number_filter)
+        search_query = SearchQuery(q, search_type="websearch", config="simple")
+        vector = (
+            SearchVector("title", weight="A", config="simple")
+            + SearchVector("semester_group__lecture__name", weight="B", config="simple")
+            + SearchVector("semester_group__lecture__long_name", weight="C", config="simple")
+        )
+        rank = SearchRank(vector, search_query, cover_density=True)
+        similarity = TrigramSimilarity("title", q)
+        series_qs = series_qs.annotate(rank=rank, similarity=similarity).filter(
+            Q(rank__gte=0.05) | Q(similarity__gte=0.2) | number_filter
+        )
+        series_qs = series_qs.order_by("-rank", "-similarity", "-semester_group__year", "number")
+    else:
+        series_qs = series_qs.order_by("-semester_group__year", "number")
 
     exercises_qs = Exercise.objects.select_related('series__semester_group__lecture')
+    if semester_groups is not None:
+        exercises_qs = exercises_qs.filter(series__semester_group__in=semester_groups)
     if q:
         number_filter = Q()
         try:
             number_filter = Q(number=int(q))
         except (TypeError, ValueError):
             number_filter = Q()
-        exercises_qs = exercises_qs.filter(
-            Q(title__icontains=q) | Q(text_content__icontains=q) | number_filter
+        search_query = SearchQuery(q, search_type="websearch", config="simple")
+        vector = (
+            SearchVector("title", weight="A", config="simple")
+            + SearchVector("search_text", weight="B", config="simple")
+            + SearchVector("series__title", weight="C", config="simple")
         )
-    if sg_filters:
-        exercises_qs = exercises_qs.filter(
-            series__semester_group__in=SemesterGroup.objects.filter(**sg_filters)
+        rank = SearchRank(vector, search_query, cover_density=True)
+        similarity = TrigramSimilarity("title", q) + TrigramSimilarity("search_text", q)
+        headline = SearchHeadline(
+            "search_text",
+            search_query,
+            config="simple",
+            start_sel=SEARCH_HEADLINE_START,
+            stop_sel=SEARCH_HEADLINE_END,
+            max_words=35,
+            min_words=12,
+            short_word=2,
+            highlight_all=False,
+        )
+        exercises_qs = exercises_qs.annotate(
+            rank=rank,
+            similarity=similarity,
+            headline=headline,
+        ).filter(
+            Q(rank__gte=0.05) | Q(similarity__gte=0.2) | number_filter
+        )
+        exercises_qs = exercises_qs.order_by(
+            "-rank",
+            "-similarity",
+            "-series__semester_group__year",
+            "series__number",
+            "number",
+        )
+    else:
+        exercises_qs = exercises_qs.order_by(
+            "-series__semester_group__year",
+            "series__number",
+            "number",
         )
 
     # Build enriched series objects
@@ -303,18 +410,19 @@ def search(
     for ex in exercises_qs:
         sg = ex.series.semester_group
         lec = sg.lecture
+        snippet_html = _safe_snippet(getattr(ex, "headline", None)) if q else ""
         exercise_results.append(
             ExerciseResultSchema(
                 id=ex.id,
                 number=ex.number,
                 title=ex.title,
-                text_content=ex.text_content,
                 series_id=ex.series.id,
                 series_number=ex.series.number,
                 lecture_id=lec.id,
                 lecture_name=lec.long_name,
                 semester=sg.semester,
                 year=sg.year,
+                snippet_html=snippet_html,
             )
         )
 

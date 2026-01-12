@@ -7,9 +7,79 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from core.models import Series
+from core.models import Series, Exercise
+from core.search_utils import extract_exercise_search_texts
 
 import re
+
+
+MARKER_TOKEN = "GMEXMARKER-"
+MARKER_RE = re.compile(rf"{MARKER_TOKEN}(\d+)")
+
+
+def _replace_markers_with_comments(html: str) -> str:
+    # Remove full marker-only paragraphs to avoid extra vertical space in previews.
+    html = re.sub(
+        rf"<p>\s*{MARKER_TOKEN}(\d+)\s*</p>",
+        lambda m: f"<!--GMEX:{m.group(1)}-->",
+        html,
+        flags=re.IGNORECASE,
+    )
+    return MARKER_RE.sub(lambda m: f"<!--GMEX:{m.group(1)}-->", html)
+
+
+def _strip_marker_tokens(text: str) -> str:
+    return MARKER_RE.sub("", text)
+
+
+def _line_has_uncommented_match(line: str, pattern: re.Pattern) -> bool:
+    match = pattern.search(line)
+    if not match:
+        return False
+    comment = re.search(r"(?<!\\)%", line)
+    if comment and match.start() > comment.start():
+        return False
+    return True
+
+
+def _count_pattern_matches(text: str, pattern: re.Pattern) -> int:
+    count = 0
+    for line in text.splitlines():
+        if _line_has_uncommented_match(line, pattern):
+            count += 1
+    return count
+
+
+def _inject_markers_for_pattern(text: str, pattern: re.Pattern, count: int) -> tuple[str, int]:
+    out: list[str] = []
+    idx = 0
+    for line in text.splitlines(keepends=True):
+        if idx < count and _line_has_uncommented_match(line, pattern):
+            idx += 1
+            out.append(f"{MARKER_TOKEN}{idx}\n")
+        out.append(line)
+    return "".join(out), idx
+
+
+def _inject_exercise_markers(raw_tex: str, exercise_count: int) -> tuple[str, int]:
+    if exercise_count <= 0:
+        return raw_tex, 0
+
+    patterns = [
+        re.compile(r"\\begin\{problem\}", re.IGNORECASE),
+        re.compile(r"\\begin\{exercise\}", re.IGNORECASE),
+        re.compile(r"\\exercise\s*\{", re.IGNORECASE),
+        re.compile(r"\\uebung\s*\{", re.IGNORECASE),
+        re.compile(r"\\subsection\*?\s*\{", re.IGNORECASE),
+    ]
+
+    for pattern in patterns:
+        match_count = _count_pattern_matches(raw_tex, pattern)
+        if match_count == exercise_count:
+            injected, injected_count = _inject_markers_for_pattern(raw_tex, pattern, exercise_count)
+            return injected, injected_count
+
+    return raw_tex, 0
 
 
 def sha256_file(path: Path) -> str:
@@ -175,6 +245,28 @@ def _normalize_math_macros_for_mathjax(html: str) -> str:
 
     return html
 
+
+def _update_exercise_search_texts(series: Series, html_content: str, stdout=None) -> None:
+    exercises = list(series.exercises.order_by("number"))
+    if not exercises:
+        return
+
+    texts = extract_exercise_search_texts(html_content or "", expected_count=len(exercises))
+    if not texts:
+        # Clear stale search text if the HTML yielded nothing usable.
+        Exercise.objects.filter(series=series).update(search_text="")
+        return
+
+    if len(texts) != len(exercises) and stdout:
+        stdout.write(
+            f"Series {series.id}: HTML produced {len(texts)} sections for {len(exercises)} exercises"
+        )
+
+    for idx, ex in enumerate(exercises):
+        text = texts[idx] if idx < len(texts) else ""
+        Exercise.objects.filter(id=ex.id).update(search_text=text)
+
+
 def _move_trailing_math_labels_inside_env(tex: str) -> str:
     """
     Some legacy sources place `\\label{...}` immediately *after* a math environment end,
@@ -329,6 +421,7 @@ class Command(BaseCommand):
 
         checksum = hashlib.sha256(full_tex.encode("utf-8", errors="ignore")).hexdigest()
         if not force and series.tex_checksum == checksum and series.render_status == Series.RenderStatus.OK:
+            _update_exercise_search_texts(series, series.html_content, stdout=self.stdout)
             self.stdout.write(f"Series {series.id}: up-to-date, skipping")
             return False
 
@@ -355,6 +448,9 @@ class Command(BaseCommand):
         raw_tex = raw_tex.replace("\\end{exenumerate}", "\\end{enumerate}")
         raw_tex = _wrap_solution_environments(raw_tex)
         raw_tex = _preserve_item_labels(raw_tex)
+        raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
+        if marker_count:
+            self.stdout.write(f"Series {series.id}: inserted {marker_count} exercise markers")
         needs_wrap = "\\begin{document}" not in raw_tex
         if needs_wrap:
             preamble = r"""\documentclass{article}
@@ -375,8 +471,9 @@ class Command(BaseCommand):
         result = subprocess.run(cmd, input=raw_tex, capture_output=True, text=True)
         if result.returncode != 0:
             # Fallback: store escaped TeX so the UI can show something instead of nothing
+            fallback_tex = _strip_marker_tokens(raw_tex)
             escaped = (
-                raw_tex.replace("&", "&amp;")
+                fallback_tex.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
             )
@@ -389,12 +486,14 @@ class Command(BaseCommand):
             series.save(update_fields=[
                 'html_content', 'html_rendered_at', 'render_status', 'render_log', 'tex_checksum'
             ])
+            _update_exercise_search_texts(series, series.html_content, stdout=self.stdout)
             self.stderr.write(self.style.WARNING(f"Series {series.id}: {series.render_log}"))  # log but continue
             return True
 
         html_content = _restore_eqrefs_to_mathjax(result.stdout)
         html_content = _normalize_pandoc_math_envs_for_mathjax(html_content)
         html_content = _normalize_math_macros_for_mathjax(html_content)
+        html_content = _replace_markers_with_comments(html_content)
         series.html_content = html_content
         series.html_rendered_at = timezone.now()
         series.render_status = Series.RenderStatus.OK
@@ -403,5 +502,6 @@ class Command(BaseCommand):
         series.save(update_fields=[
             'html_content', 'html_rendered_at', 'render_status', 'render_log', 'tex_checksum'
         ])
+        _update_exercise_search_texts(series, series.html_content, stdout=self.stdout)
         self.stdout.write(self.style.SUCCESS(f"Series {series.id}: rendered"))
         return True

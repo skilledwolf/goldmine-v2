@@ -33,7 +33,7 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
-      - ../docker/volumes/data/lectures:/app/media/lectures:ro
+      - ./backend/media/lectures:/app/media/lectures:ro
     ports:
       - "8000:8000"
     environment:

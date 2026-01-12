@@ -24,15 +24,15 @@ export async function apiFetch<T>(endpoint: string, options: FetchOptions = {}):
         url += `?${searchParams.toString()}`;
     }
 
-    const headers: HeadersInit = {
-        "Content-Type": "application/json",
-        ...fetchOptions.headers,
-    };
+    const headers = new Headers(fetchOptions.headers);
+    if (!headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+    }
 
     const method = (fetchOptions.method || "GET").toUpperCase();
     if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
         const csrf = getCookie("csrftoken");
-        if (csrf) headers["X-CSRFToken"] = csrf;
+        if (csrf) headers.set("X-CSRFToken", csrf);
     }
 
     const start = typeof performance !== "undefined" ? performance.now() : Date.now();

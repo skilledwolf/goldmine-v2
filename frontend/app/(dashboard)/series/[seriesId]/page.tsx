@@ -428,6 +428,7 @@ export default function SeriesDetailPage() {
   );
   const { data: me } = useApiSWR<{ id: number; username: string; is_staff?: boolean } | { message: string }>('/auth/me');
   const errorMessage = seriesError instanceof Error ? seriesError.message : seriesError ? 'Failed to load series' : null;
+  const apiBase = getApiBase();
   const [comments, setComments] = useState<Record<number, Comment[]>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const [commentErrors, setCommentErrors] = useState<Record<number, string | null>>({});
@@ -898,7 +899,7 @@ export default function SeriesDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-sm text-muted-foreground">
             {series.lecture_name} · {series.semester}{series.year}
@@ -907,9 +908,20 @@ export default function SeriesDetailPage() {
             Series {series.number}{series.title ? ` — ${series.title}` : ''}
           </h1>
         </div>
-        <Link href={`/lectures/${series.lecture_id}`} className="text-sm text-primary hover:underline">
-          ← Back to lecture
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <a
+              href={`${apiBase}/files/series/${series.id}/zip`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Download series zip
+            </a>
+          </Button>
+          <Link href={`/lectures/${series.lecture_id}`} className="text-sm text-primary hover:underline">
+            ← Back to lecture
+          </Link>
+        </div>
       </div>
 
       {(neighborSeries.prev || neighborSeries.next) && (

@@ -36,13 +36,13 @@ type Exercise = {
   id: number;
   number: number;
   title: string;
-  text_content: string;
   series_id: number;
   series_number: number;
   lecture_id: number;
   lecture_name: string;
   semester: string;
   year: number;
+  snippet_html?: string;
 };
 
 type SearchResponse = {
@@ -576,8 +576,11 @@ export default function SearchPage() {
                         {ex.lecture_name} · {ex.semester}{ex.year} · Series {ex.series_number}
                       </div>
                     </div>
-                    {ex.text_content && (
-                      <p className="mt-2 text-sm text-foreground/90 line-clamp-3">{highlightText(ex.text_content)}</p>
+                    {ex.snippet_html && (
+                      <p
+                        className="mt-2 text-sm text-foreground/90 line-clamp-3"
+                        dangerouslySetInnerHTML={{ __html: ex.snippet_html }}
+                      />
                     )}
                     <div className="mt-2 flex gap-3 text-sm">
                       <Link href={`/series/${ex.series_id}`} className="text-primary hover:underline">

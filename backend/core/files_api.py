@@ -9,6 +9,8 @@ import mimetypes
 import os
 import re
 import subprocess
+import tempfile
+import zipfile
 
 files_router = Router()
 
@@ -355,3 +357,91 @@ def get_file(request, series_id: int, file_type: str):
     # Stream file; FileResponse accepts a file-like object
     file_handle = open(file_path, "rb")
     return FileResponse(file_handle, as_attachment=True, filename=filename)
+
+
+def _ensure_under_root(path: Path, root: Path) -> Path:
+    try:
+        resolved = path.resolve()
+        root_resolved = root.resolve()
+    except OSError:
+        raise Http404("Invalid path")
+    if not resolved.is_relative_to(root_resolved):
+        raise Http404("Invalid path")
+    return resolved
+
+
+def _zip_directory(dir_path: Path, archive_name: str) -> FileResponse:
+    if not dir_path.is_dir():
+        raise Http404("Directory not found")
+
+    tmp = tempfile.SpooledTemporaryFile(max_size=100 * 1024 * 1024)
+    with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for root, _, files in os.walk(dir_path):
+            for fname in files:
+                full = Path(root) / fname
+                rel = full.relative_to(dir_path)
+                zf.write(full, arcname=str(rel))
+    tmp.seek(0)
+    return FileResponse(
+        tmp,
+        as_attachment=True,
+        filename=f"{archive_name}.zip",
+        content_type="application/zip",
+    )
+
+
+@files_router.get("/semester/{semester_group_id}/zip")
+def download_semester_zip(request, semester_group_id: int):
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Authentication required")
+
+    from .models import SemesterGroup  # local import to avoid cycle
+
+    try:
+        sg = SemesterGroup.objects.select_related("lecture").get(id=semester_group_id)
+    except SemesterGroup.DoesNotExist:
+        raise Http404("Semester not found")
+
+    if not sg.fs_path:
+        raise Http404("Semester path is not configured")
+
+    root = Path(settings.LECTURE_MEDIA_ROOT)
+    semester_root = _ensure_under_root(root / sg.fs_path, root)
+    archive_name = f"{sg.lecture.name}_{sg.semester}{sg.year}"
+    return _zip_directory(semester_root, archive_name)
+
+
+@files_router.get("/series/{series_id}/zip")
+def download_series_zip(request, series_id: int):
+    if not request.user.is_authenticated:
+        return HttpResponseForbidden("Authentication required")
+
+    try:
+        series = Series.objects.select_related("semester_group__lecture").get(id=series_id)
+    except Series.DoesNotExist:
+        raise Http404("Series not found")
+
+    sg = series.semester_group
+    if not sg.fs_path:
+        raise Http404("Semester path is not configured")
+
+    root = Path(settings.LECTURE_MEDIA_ROOT)
+    semester_root = _ensure_under_root(root / sg.fs_path, root)
+
+    candidates: list[Path] = []
+    for rel in [series.tex_file, series.pdf_file, series.solution_file]:
+        if rel:
+            candidates.append(semester_root / rel)
+    base_dir = semester_root
+    for cand in candidates:
+        try:
+            cand_resolved = _ensure_under_root(cand, semester_root)
+        except Http404:
+            continue
+        parent = cand_resolved.parent
+        if parent.is_dir():
+            base_dir = parent
+            break
+
+    archive_name = f"{sg.lecture.name}_{sg.semester}{sg.year}_S{series.number}"
+    return _zip_directory(base_dir, archive_name)

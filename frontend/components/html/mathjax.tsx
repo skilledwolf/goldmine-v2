@@ -33,7 +33,11 @@ type MathJaxGroupState = {
 declare global {
   interface Window {
     MathJax?: {
+      loader?: {
+        load?: string[];
+      };
       tex?: {
+        packages?: Record<string, string[]>;
         inlineMath?: [string, string][];
         displayMath?: [string, string][];
         processEscapes?: boolean;
@@ -219,7 +223,7 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
 
         // Pandoc emits <embed src="..."> for some includes (PDF/EPS). Convert those to <img>
         // so we can rewrite them to the API asset endpoint and show a placeholder on failure.
-        const embeds = Array.from(ref.current.querySelectorAll('embed[src]'));
+        const embeds = Array.from(ref.current.querySelectorAll<HTMLEmbedElement>('embed[src]'));
         for (const embed of embeds) {
           const originalSrc = embed.getAttribute('src') || '';
           if (!originalSrc) continue;
@@ -233,7 +237,7 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
           embed.replaceWith(img);
         }
 
-        const images = Array.from(ref.current.querySelectorAll('img[src]'));
+        const images = Array.from(ref.current.querySelectorAll<HTMLImageElement>('img[src]'));
         for (const img of images) {
           const originalSrc = img.getAttribute('src') || '';
           if (!originalSrc) continue;
