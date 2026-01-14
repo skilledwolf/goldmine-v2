@@ -439,7 +439,7 @@ export default function SearchPage() {
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           {savedSearches.length === 0 ? (
-            <div className="text-xs text-muted-foreground italic">You haven't saved any searches yet.</div>
+            <div className="text-xs text-muted-foreground italic">You have not saved any searches yet.</div>
           ) : (
             savedSearches.map((entry) => (
               <div key={entry.id} className="group flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs shadow-sm hover:shadow-md transition-all">

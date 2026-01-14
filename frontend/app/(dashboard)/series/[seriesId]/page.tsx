@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { apiFetch, getApiBase } from '@/lib/api';
-import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MathJaxHTML } from '@/components/html/mathjax';
 import { PdfPreview } from '@/components/ui/pdf-preview';
@@ -616,7 +615,7 @@ export default function SeriesDetailPage() {
           {!isExpanded && commentCount > 0 && (
             <div className="flex -space-x-2 mr-2">
               {/* Small preview of avatars if collapsed */}
-              {exerciseComments.slice(0, 3).map((c, i) => {
+              {exerciseComments.slice(0, 3).map((c) => {
                 const colors = ['bg-red-500', 'bg-orange-500', 'bg-amber-500', 'bg-green-500', 'bg-emerald-500', 'bg-teal-500', 'bg-cyan-500', 'bg-sky-500', 'bg-blue-500', 'bg-indigo-500', 'bg-violet-500', 'bg-purple-500', 'bg-fuchsia-500', 'bg-pink-500', 'bg-rose-500'];
                 const color = colors[c.user_id % colors.length];
                 return (
@@ -668,9 +667,7 @@ export default function SeriesDetailPage() {
                   );
                 }
 
-                return list.map((c, idx) => {
-                  const num = idx + 1;
-                  const parentNum = c.parent_id ? indexMap.get(c.parent_id) : undefined;
+                return list.map((c) => {
                   const isReply = Boolean(c.parent_id);
                   const authorInitials = (c.username || 'U').slice(0, 2).toUpperCase();
                   // Deterministic color for avatar based on user_id

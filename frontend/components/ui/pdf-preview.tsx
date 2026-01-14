@@ -97,6 +97,7 @@ export function PdfPreview({ seriesId, file = "pdf", className }: Props) {
         <div className="text-xs text-muted-foreground">{metaError}</div>
       )}
 
+      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={imgSrc}
         alt={`${isSolution ? "Solutions" : "PDF"} preview page ${page}`}

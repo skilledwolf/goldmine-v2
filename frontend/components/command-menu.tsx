@@ -4,20 +4,13 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import {
-    Calculator,
-    Calendar,
-    CreditCard,
-    Settings,
-    Smile,
     User,
     Search,
     FileText,
     Home,
-    MessageCircle,
     Laptop,
     Check,
-    BookOpen,
-    ArrowRight
+    BookOpen
 } from "lucide-react";
 import { useDebouncedValue } from "@/lib/hooks";
 import { apiFetch } from "@/lib/api";

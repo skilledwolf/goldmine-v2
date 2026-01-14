@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { useApiSWR } from '@/lib/swr';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ShieldAlert, RefreshCw, LayoutPanelTop, Rows } from 'lucide-react';
 
@@ -104,22 +104,6 @@ export default function IssuesPage() {
       items: grp.items.sort((a, b) => a.number - b.number),
     }));
   }, [filtered]);
-
-  const renderIssues = (issues: string[]) => {
-    if (!issues.length) return null;
-    return (
-      <div className="flex flex-wrap gap-2">
-        {issues.map((issue) => (
-          <span
-            key={issue}
-            className="rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive"
-          >
-            {ISSUE_LABELS[issue] || issue}
-          </span>
-        ))}
-      </div>
-    );
-  };
 
   if (isLoading) {
     return <div className="text-sm text-muted-foreground">Loading issues…</div>;

@@ -160,7 +160,7 @@ export default function LecturesPage() {
               </div>
               <h3 className="text-lg font-semibold">No lectures found</h3>
               <p className="mt-1 text-sm text-muted-foreground max-w-sm">
-                We couldn't find any lectures matching "{search}". Try searching for something else.
+                We could not find any lectures matching {search}. Try searching for something else.
               </p>
               <Button variant="outline" className="mt-4" onClick={() => setSearch('')}>Clear Search</Button>
             </div>

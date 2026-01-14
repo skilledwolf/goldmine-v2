@@ -48,7 +48,7 @@ function getCookie(name: string): string | undefined {
 export default function UploadsPage() {
   const { data: me } = useApiSWR<{ id: number; username: string; is_staff?: boolean } | { message: string }>('/auth/me');
   const { data: lectureData } = useApiSWR<Lecture[]>('/lectures');
-  const lectures = lectureData ?? [];
+  const lectures = useMemo(() => lectureData ?? [], [lectureData]);
   const isStaff = me && !('message' in me) && me.is_staff;
 
   const [lectureId, setLectureId] = useState<string>('');
@@ -189,7 +189,7 @@ export default function UploadsPage() {
           Upload Semester
         </h1>
         <p className="text-lg text-muted-foreground mt-2 max-w-2xl">
-          Upload a zip file containing the full semester folder structure. We'll analyze it and let you confirm the series details before importing.
+          Upload a zip file containing the full semester folder structure. We will analyze it and let you confirm the series details before importing.
         </p>
       </div>
 
