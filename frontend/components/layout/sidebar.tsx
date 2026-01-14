@@ -115,24 +115,54 @@ export function Sidebar() {
                 </div>
 
                 <nav className="space-y-2">
-                    {sidebarItems.map((item) => (
-                        <Link
-                            key={item.href}
-                            href={item.href}
-                            className={cn(
-                                "group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
-                                pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
-                                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
-                                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                                collapsed && "justify-center px-2"
-                            )}
-                            title={collapsed ? item.name : undefined}
-                        >
-                            <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", !collapsed && "mr-3")} />
-                            {!collapsed && <span>{item.name}</span>}
-                            {collapsed && <span className="sr-only">{item.name}</span>}
-                        </Link>
-                    ))}
+                    {sidebarItems.map((item) => {
+                        const isSearch = item.name === 'Search';
+
+                        if (isSearch) {
+                            return (
+                                <Link
+                                    key={item.href}
+                                    href={item.href}
+                                    className={cn(
+                                        "group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+                                        pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+                                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                        collapsed && "justify-center px-2"
+                                    )}
+                                    title={collapsed ? "Advanced Search" : undefined}
+                                >
+                                    <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", !collapsed && "mr-3")} />
+                                    {!collapsed && <span className="flex-1">Search</span>}
+                                    {!collapsed && (
+                                        <kbd className="pointer-events-none hidden h-5 select-none items-center gap-1 rounded bg-muted/20 px-1.5 font-mono text-[10px] font-medium opacity-100 sm:flex text-current">
+                                            <span className="text-xs">⌘</span>K
+                                        </kbd>
+                                    )}
+                                    {collapsed && <span className="sr-only">Search</span>}
+                                </Link>
+                            );
+                        }
+
+                        return (
+                            <Link
+                                key={item.href}
+                                href={item.href}
+                                className={cn(
+                                    "group flex items-center rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+                                    pathname === item.href || (item.href !== '/' && pathname.startsWith(item.href))
+                                        ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25"
+                                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                    collapsed && "justify-center px-2"
+                                )}
+                                title={collapsed ? item.name : undefined}
+                            >
+                                <item.icon className={cn("h-5 w-5 transition-transform group-hover:scale-110", !collapsed && "mr-3")} />
+                                {!collapsed && <span>{item.name}</span>}
+                                {collapsed && <span className="sr-only">{item.name}</span>}
+                            </Link>
+                        );
+                    })}
                 </nav>
             </div>
 

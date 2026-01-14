@@ -39,6 +39,9 @@ def _line_has_uncommented_match(line: str, pattern: re.Pattern) -> bool:
     comment = re.search(r"(?<!\\)%", line)
     if comment and match.start() > comment.start():
         return False
+    pre = line[:match.start()]
+    if "\\newcommand" in pre or "\\renewcommand" in pre or "\\providecommand" in pre:
+        return False
     return True
 
 
@@ -65,19 +68,33 @@ def _inject_exercise_markers(raw_tex: str, exercise_count: int) -> tuple[str, in
     if exercise_count <= 0:
         return raw_tex, 0
 
+    prefix = ""
+    suffix = ""
+    body = raw_tex
+    begin_doc = raw_tex.find("\\begin{document}")
+    if begin_doc != -1:
+        begin_end = begin_doc + len("\\begin{document}")
+        end_doc = raw_tex.find("\\end{document}", begin_end)
+        if end_doc != -1:
+            prefix = raw_tex[:begin_end]
+            body = raw_tex[begin_end:end_doc]
+            suffix = raw_tex[end_doc:]
+
     patterns = [
         re.compile(r"\\begin\{problem\}", re.IGNORECASE),
         re.compile(r"\\begin\{exercise\}", re.IGNORECASE),
         re.compile(r"\\exercise\s*\{", re.IGNORECASE),
         re.compile(r"\\uebung\s*\{", re.IGNORECASE),
         re.compile(r"\\subsection\*?\s*\{", re.IGNORECASE),
+        re.compile(r"\{\\utit\b", re.IGNORECASE),
+        re.compile(r"\{\\uutit\b", re.IGNORECASE),
     ]
 
     for pattern in patterns:
-        match_count = _count_pattern_matches(raw_tex, pattern)
+        match_count = _count_pattern_matches(body, pattern)
         if match_count == exercise_count:
-            injected, injected_count = _inject_markers_for_pattern(raw_tex, pattern, exercise_count)
-            return injected, injected_count
+            injected_body, injected_count = _inject_markers_for_pattern(body, pattern, exercise_count)
+            return f"{prefix}{injected_body}{suffix}", injected_count
 
     return raw_tex, 0
 
@@ -600,6 +617,10 @@ class Command(BaseCommand):
         # Read TeX; if it is a fragment (no \\begin{document}), wrap in a minimal doc
         raw_tex = full_tex
 
+        raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
+        if marker_count:
+            self.stdout.write(f"Series {series.id}: inserted {marker_count} exercise markers")
+
         # Compatibility transforms for common Gold Mine LaTeX macros/environments.
         # Pandoc does not load .sty files, so these commands would otherwise be ignored and
         # exercise titles would disappear from the HTML.
@@ -630,9 +651,6 @@ class Command(BaseCommand):
         raw_tex = _wrap_solution_environments(raw_tex, show_solutions)
         raw_tex = _rewrite_two_arg_command(raw_tex, "uebung", r"\subsection*{{{arg1}. {arg2}}}")
         raw_tex = _preserve_item_labels(raw_tex)
-        raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
-        if marker_count:
-            self.stdout.write(f"Series {series.id}: inserted {marker_count} exercise markers")
         needs_wrap = "\\begin{document}" not in raw_tex
         if needs_wrap:
             preamble = r"""\documentclass{article}

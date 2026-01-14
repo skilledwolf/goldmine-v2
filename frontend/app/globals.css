@@ -51,38 +51,39 @@
   /* Light Mode - Crisp & Airy */
   --background: oklch(0.985 0.005 260);
   --foreground: oklch(0.15 0.05 260);
-  
+
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.15 0.05 260);
-  
+
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.15 0.05 260);
-  
-  --primary: oklch(0.6 0.18 270); /* Vibrant Violet */
+
+  --primary: oklch(0.6 0.18 270);
+  /* Vibrant Violet */
   --primary-foreground: oklch(0.98 0.01 260);
-  
+
   --secondary: oklch(0.96 0.01 260);
   --secondary-foreground: oklch(0.35 0.1 260);
-  
+
   --muted: oklch(0.96 0.01 260);
   --muted-foreground: oklch(0.55 0.05 260);
-  
+
   --accent: oklch(0.94 0.02 260);
   --accent-foreground: oklch(0.35 0.1 270);
-  
+
   --destructive: oklch(0.577 0.245 27.325);
-  
+
   --border: oklch(0.92 0.01 260);
   --input: oklch(0.92 0.01 260);
   --ring: oklch(0.6 0.18 270);
-  
+
   /* Chart Colors matching the theme */
   --chart-1: oklch(0.6 0.18 270);
   --chart-2: oklch(0.55 0.2 300);
   --chart-3: oklch(0.5 0.25 240);
   --chart-4: oklch(0.7 0.15 200);
   --chart-5: oklch(0.8 0.1 150);
-  
+
   /* Sidebar - Light */
   --sidebar: oklch(0.985 0.005 260);
   --sidebar-foreground: oklch(0.15 0.05 260);
@@ -96,39 +97,41 @@
 
 .dark {
   /* Dark Mode - Deep Cosmic */
-  --background: oklch(0.12 0.04 260); /* Deep Indigo Background */
+  --background: oklch(0.12 0.04 260);
+  /* Deep Indigo Background */
   --foreground: oklch(0.98 0.01 260);
-  
+
   --card: oklch(0.16 0.05 260);
   --card-foreground: oklch(0.98 0.01 260);
-  
+
   --popover: oklch(0.16 0.05 260);
   --popover-foreground: oklch(0.98 0.01 260);
-  
-  --primary: oklch(0.65 0.22 280); /* Bright Cosmic Purple */
+
+  --primary: oklch(0.65 0.22 280);
+  /* Bright Cosmic Purple */
   --primary-foreground: oklch(0.98 0.01 260);
-  
+
   --secondary: oklch(0.25 0.06 260);
   --secondary-foreground: oklch(0.98 0.01 260);
-  
+
   --muted: oklch(0.25 0.06 260);
   --muted-foreground: oklch(0.7 0.05 260);
-  
+
   --accent: oklch(0.25 0.08 270);
   --accent-foreground: oklch(0.98 0.01 260);
-  
+
   --destructive: oklch(0.7 0.19 22);
-  
+
   --border: oklch(0.25 0.06 260);
   --input: oklch(0.25 0.06 260);
   --ring: oklch(0.65 0.22 280);
-  
+
   --chart-1: oklch(0.65 0.22 280);
   --chart-2: oklch(0.6 0.2 320);
   --chart-3: oklch(0.55 0.25 240);
   --chart-4: oklch(0.75 0.15 200);
   --chart-5: oklch(0.85 0.1 150);
-  
+
   /* Sidebar - Dark */
   --sidebar: oklch(0.14 0.05 260);
   --sidebar-foreground: oklch(0.98 0.01 260);
@@ -160,32 +163,38 @@
   .prose-exercise {
     counter-reset: var(--gm-counter-reset, exercise figure);
   }
+
   .prose-exercise p {
     text-align: justify;
     margin-bottom: 1rem;
   }
+
   .prose-exercise h1,
   .prose-exercise h2,
   .prose-exercise h3 {
     margin-top: 1.4em;
     margin-bottom: 0.6em;
   }
+
   .prose-exercise h1 {
     font-size: 1.25rem;
     font-weight: 700;
     line-height: 1.3;
   }
+
   .prose-exercise h2 {
     counter-increment: exercise;
     font-size: 1.125rem;
     font-weight: 700;
     line-height: 1.35;
   }
+
   .prose-exercise h2::before {
     content: "Exercise " counter(exercise) ": ";
     font-weight: 600;
     opacity: 0.85;
   }
+
   .prose-exercise h3 {
     font-size: 1rem;
     font-weight: 600;
@@ -203,18 +212,18 @@
     background: color-mix(in oklch, var(--muted) 55%, transparent);
   }
 
-  .prose-exercise figure > img {
+  .prose-exercise figure>img {
     margin: 0 auto;
   }
 
-  .prose-exercise figure > figcaption {
+  .prose-exercise figure>figcaption {
     margin-top: 0.5rem;
     font-size: 0.875rem;
     line-height: 1.35;
     color: var(--muted-foreground);
   }
 
-  .prose-exercise figure > figcaption::before {
+  .prose-exercise figure>figcaption::before {
     content: "Fig. " counter(figure) ". ";
     font-weight: 600;
     color: var(--foreground);
@@ -231,6 +240,7 @@
     background: color-mix(in oklch, var(--muted) 55%, transparent);
     box-shadow: 0 6px 18px -10px color-mix(in oklch, var(--shadow) 45%, transparent);
   }
+
   .prose-exercise details.gm-solution summary,
   .prose-exercise details.gm-comments summary,
   details.gm-comments summary {
@@ -242,11 +252,13 @@
     align-items: center;
     gap: 0.4rem;
   }
+
   .prose-exercise details.gm-solution summary::-webkit-details-marker,
   .prose-exercise details.gm-comments summary::-webkit-details-marker,
   details.gm-comments summary::-webkit-details-marker {
     display: none;
   }
+
   .prose-exercise details.gm-solution summary::before,
   .prose-exercise details.gm-comments summary::before,
   details.gm-comments summary::before {
@@ -254,14 +266,16 @@
     display: inline-block;
     transition: transform 120ms ease;
   }
+
   .prose-exercise details.gm-solution[open] summary::before,
   .prose-exercise details.gm-comments[open] summary::before,
   details.gm-comments[open] summary::before {
     transform: rotate(90deg);
   }
-  .prose-exercise details.gm-solution > *:not(summary),
-  .prose-exercise details.gm-comments > *:not(summary),
-  details.gm-comments > *:not(summary) {
+
+  .prose-exercise details.gm-solution>*:not(summary),
+  .prose-exercise details.gm-comments>*:not(summary),
+  details.gm-comments>*:not(summary) {
     margin-top: 0.75rem;
   }
 
@@ -272,33 +286,42 @@
     margin-top: 0.5rem;
     margin-bottom: 1rem;
   }
+
   .prose-exercise ol {
     list-style-type: lower-alpha;
   }
-  .prose-exercise ol > li::marker {
+
+  .prose-exercise ol>li::marker {
     content: "(" counter(list-item, lower-alpha) ") ";
     font-variant-numeric: tabular-nums;
   }
+
   .prose-exercise ol ol {
     list-style-type: lower-roman;
     margin-top: 0.35rem;
     margin-bottom: 0.35rem;
   }
-  .prose-exercise ol ol > li::marker {
+
+  .prose-exercise ol ol>li::marker {
     content: "(" counter(list-item, lower-roman) ") ";
   }
+
   .prose-exercise ol ol ol {
     list-style-type: decimal;
   }
-  .prose-exercise ol ol ol > li::marker {
+
+  .prose-exercise ol ol ol>li::marker {
     content: "(" counter(list-item, decimal) ") ";
   }
+
   .prose-exercise ol ol ol ol {
     list-style-type: upper-alpha;
   }
-  .prose-exercise ol ol ol ol > li::marker {
+
+  .prose-exercise ol ol ol ol>li::marker {
     content: "(" counter(list-item, upper-alpha) ") ";
   }
+
   .prose-exercise ul {
     list-style-type: disc;
   }
@@ -349,4 +372,32 @@
   .prose-exercise section.footnotes a {
     color: inherit;
   }
+}
+
+/* CMDK Overlay - Glassmorphism */
+[cmdk-overlay] {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 49;
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+[cmdk-group-heading] {
+  padding-left: 8px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted-foreground);
 }

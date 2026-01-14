@@ -12,7 +12,7 @@ import { addRecentItem } from '@/lib/recent';
 import { useToast } from '@/components/ui/toast';
 import { useApiSWR } from '@/lib/swr';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
-import { MessageCircle, Edit2, Trash2, Reply, ChevronDown, ChevronRight, User, CornerDownRight, Send } from 'lucide-react';
+import { MessageCircle, Edit2, Trash2, Reply, ChevronDown, ChevronRight, User, CornerDownRight, Send, Copy } from 'lucide-react';
 
 type Exercise = {
   id: number;
@@ -98,6 +98,7 @@ function SeriesPreviewTabs({
   renderCommentsForExercise?: (ex: Exercise, context?: 'list' | 'preview') => React.ReactNode;
 }) {
   const isStaff = !!currentUser?.is_staff;
+  const { pushToast } = useToast();
   const base = getApiBase().replace(/\/$/, '');
 
   const htmlContent = series.html_content || '';
@@ -122,11 +123,12 @@ function SeriesPreviewTabs({
   const [texError, setTexError] = useState<string | null>(null);
   const [texReloadToken, setTexReloadToken] = useState(0);
   const texStateRef = useRef({ texSource, texLoading, texError });
+  const [copying, setCopying] = useState(false);
+  const [copied, setCopied] = useState(false);
   const highlightedTex = useMemo(
     () => (texSource !== null ? highlightLatex(texSource) : null),
     [texSource]
   );
-  const [pendingScrollId, setPendingScrollId] = useState<number | null>(null);
 
   useEffect(() => {
     texStateRef.current = { texSource, texLoading, texError };
@@ -167,29 +169,55 @@ function SeriesPreviewTabs({
     void load();
   }, [hasTex, tab, texFile, texHref, texReloadToken]);
 
-  useEffect(() => {
-    if (tab !== 'html') return;
-    if (pendingScrollId === null) return;
-    if (!canShowHtmlPreview) return;
-    requestAnimationFrame(() => {
-      const el = document.getElementById(`exercise-${pendingScrollId}`);
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        setPendingScrollId(null);
-      } else {
-        setTimeout(() => {
-          const el2 = document.getElementById(`exercise-${pendingScrollId}`);
-          if (el2) el2.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          setPendingScrollId(null);
-        }, 60);
+  const handleCopyTex = async () => {
+    if (!hasTex || copying) return;
+    setCopying(true);
+    setTexError(null);
+    try {
+      let source = texSource;
+      if (source === null) {
+        const res = await fetch(texHref, { credentials: 'include' });
+        if (!res.ok) {
+          const body = await res.text().catch(() => '');
+          if (res.status === 404) {
+            throw new Error(`LaTeX file not found on server (${texFile}).`);
+          }
+          if (res.status === 403) {
+            throw new Error('Authentication required to view LaTeX source.');
+          }
+          throw new Error(body || res.statusText || `Request failed with status ${res.status}`);
+        }
+        source = await res.text();
+        setTexSource(source);
       }
-    });
-  }, [tab, pendingScrollId, canShowHtmlPreview]);
+      if (!source) {
+        throw new Error('No LaTeX source available to copy.');
+      }
 
-  const handleJump = (id: number) => {
-    if (tab !== 'html') setTab('html');
-    setPendingScrollId(id);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(source);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = source;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+      pushToast({ title: 'Source copied to clipboard', tone: 'success' });
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to copy LaTeX source';
+      setTexError(message);
+      pushToast({ title: 'Copy failed', description: message, tone: 'error' });
+    } finally {
+      setCopying(false);
+    }
   };
+
 
   return (
     <div className="space-y-6">
@@ -252,21 +280,6 @@ function SeriesPreviewTabs({
         <div className="p-4 md:p-6">
           {tab === 'html' && (
             <div className="space-y-6">
-              {series.exercises.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 px-3 py-2 text-xs">
-                  <span className="font-semibold text-muted-foreground">Jump to:</span>
-                  {series.exercises.map((ex) => (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      className="rounded-md border border-input bg-background/50 px-2 py-1 text-foreground/80 transition-colors hover:border-primary/50 hover:bg-primary/5 hover:text-primary"
-                      onClick={() => handleJump(ex.id)}
-                    >
-                      Ex {ex.number}
-                    </button>
-                  ))}
-                </div>
-              )}
               {canShowHtmlPreview ? (
                 exerciseHtmlMap && series.exercises.length > 0 ? (
                   <div className="space-y-8 divide-y divide-border/50">
@@ -366,10 +379,15 @@ function SeriesPreviewTabs({
             <div className="space-y-4">
               <div className="flex flex-wrap items-center gap-2 mb-4">
                 {hasTex ? (
-                  <Button asChild size="sm" className="gap-2">
-                    <a href={texHref} target="_blank" rel="noreferrer">
-                      <span className="text-lg">↓</span> Download Source (.tex)
-                    </a>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="gap-2"
+                    onClick={handleCopyTex}
+                    disabled={copying || texLoading}
+                  >
+                    <Copy className="h-4 w-4" />
+                    {copying ? 'Copying…' : copied ? 'Copied!' : 'Copy source (.tex)'}
                   </Button>
                 ) : (
                   <div className="text-xs text-muted-foreground">No `.tex` file recorded for this series.</div>
@@ -495,20 +513,61 @@ export default function SeriesDetailPage() {
     if (typeof DOMParser === 'undefined') return;
 
     try {
+      const html = series.html_content;
+      const markerRegex = /<!--GMEX:(\d+)-->/g;
+      if (markerRegex.test(html)) {
+        const parts: string[] = [];
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+        markerRegex.lastIndex = 0;
+        while ((match = markerRegex.exec(html)) !== null) {
+          if (parts.length > 0) {
+            parts[parts.length - 1] += html.slice(lastIndex, match.index);
+          }
+          parts.push('');
+          lastIndex = match.index + match[0].length;
+        }
+        if (parts.length > 0) {
+          parts[parts.length - 1] += html.slice(lastIndex);
+        }
+        const byExercise: Record<number, string> = {};
+        series.exercises.forEach((ex, idx) => {
+          byExercise[ex.id] = (parts[idx] || '').trim();
+        });
+        setExerciseHtml(byExercise);
+        return;
+      }
+
       const parser = new DOMParser();
-      const doc = parser.parseFromString(series.html_content, 'text/html');
-      const headings = Array.from(doc.querySelectorAll('h2'));
+      const doc = parser.parseFromString(html, 'text/html');
+      const headingLevels = ['h2', 'h3', 'h1', 'h4'];
+      let headings: Element[] = [];
+      let headingTag = 'h2';
+
+      for (const level of headingLevels) {
+        const found = Array.from(doc.querySelectorAll(level));
+        if (found.length === 0) continue;
+        if (found.length === series.exercises.length) {
+          headings = found;
+          headingTag = level;
+          break;
+        }
+        if (headings.length === 0) {
+          headings = found;
+          headingTag = level;
+        }
+      }
+
       const byExercise: Record<number, string> = {};
-
-      headings.forEach((h2, idx) => {
+      headings.forEach((heading, idx) => {
         const container = document.createElement('div');
-        container.appendChild(h2.cloneNode(true));
+        container.appendChild(heading.cloneNode(true));
 
-        let cursor: ChildNode | null = h2.nextSibling;
+        let cursor: ChildNode | null = heading.nextSibling;
         while (cursor) {
           if (cursor.nodeType === Node.ELEMENT_NODE) {
             const tag = (cursor as Element).tagName.toLowerCase();
-            const isNextExercise = tag === 'h2';
+            const isNextExercise = tag === headingTag;
             const isFootnotes = tag === 'section' && (cursor as Element).classList.contains('footnotes');
             if (isNextExercise || isFootnotes) break;
           }

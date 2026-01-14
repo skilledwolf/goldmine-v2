@@ -397,6 +397,11 @@ def search(
             "number",
         )
 
+    # Limit results to prevent payload bloat
+    lect_qs = lect_qs[:5]
+    series_qs = series_qs[:10]
+    exercises_qs = exercises_qs[:20]
+
     # Build enriched series objects
     series_results = []
     for s in series_qs:
