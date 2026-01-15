@@ -16,9 +16,13 @@ files_router = Router()
 
 
 PDF_PREVIEW_CACHE_DIR = Path("/tmp/goldmine_pdf_previews")
+PS_PREVIEW_CACHE_DIR = Path("/tmp/goldmine_ps_previews")
 RENDERED_ASSET_ROOT = Path(settings.MEDIA_ROOT) / "latexml-assets"
 PDF_TO_PNG_TIMEOUT = int(os.getenv("PDF_TO_PNG_TIMEOUT_SECONDS", "20"))
+PS_TO_PNG_TIMEOUT = int(os.getenv("PS_TO_PNG_TIMEOUT_SECONDS", "20"))
+PS_TO_PNG_DPI = int(os.getenv("PS_TO_PNG_DPI", "200"))
 PDF_INFO_TIMEOUT = int(os.getenv("PDF_INFO_TIMEOUT_SECONDS", "10"))
+_POSTSCRIPT_EXTS = {".eps", ".ps", ".mps"}
 
 
 def _safe_file_response(file_path: Path) -> FileResponse:
@@ -59,7 +63,7 @@ def _find_asset_file(semester_root: Path, tex_dir: Path, ref: str) -> Path:
     def add_variants(p: Path):
         if p.suffix:
             suffix = p.suffix.lower()
-            if suffix in {".eps", ".ps"}:
+            if suffix in {".eps", ".ps", ".mps"}:
                 stem = p.with_suffix("")
                 # Prefer converted PDFs over the raw EPS/PS, since browsers can't render
                 # PostScript reliably. TeX toolchains often generate `-eps-converted-to.pdf`.
@@ -73,7 +77,7 @@ def _find_asset_file(semester_root: Path, tex_dir: Path, ref: str) -> Path:
             return
 
         candidates.append(p)
-        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"]:
+        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mps"]:
             candidates.append(p.with_suffix(ext))
         candidates.append(p.with_name(p.name + "-eps-converted-to.pdf"))
         candidates.append(p.with_name(p.name + ".eps-converted-to.pdf"))
@@ -180,7 +184,7 @@ def _find_rendered_asset_file(series_id: int, ref: str) -> Path | None:
             candidates.append(p)
             return
         candidates.append(p)
-        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"]:
+        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mps"]:
             candidates.append(p.with_suffix(ext))
 
     add_variants(root / base)
@@ -247,6 +251,45 @@ def _pdf_to_png(pdf_path: Path, page: int = 1) -> Path:
         raise Http404(f"PDF conversion failed: {(exc.stderr or '').strip()[:200]}") from exc
     if not out_png.exists():
         raise Http404("PDF conversion failed")
+    return out_png
+
+
+def _ps_to_png(ps_path: Path) -> Path:
+    PS_PREVIEW_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        stat = ps_path.stat()
+        salt = f"{ps_path}:{stat.st_mtime_ns}:{PS_TO_PNG_DPI}".encode("utf-8")
+    except OSError:
+        salt = f"{ps_path}:{PS_TO_PNG_DPI}".encode("utf-8")
+
+    key = hashlib.sha256(salt).hexdigest()[:20]
+    out_png = PS_PREVIEW_CACHE_DIR / f"{key}.png"
+    if out_png.exists():
+        return out_png
+
+    cmd = [
+        "gs",
+        "-q",
+        "-dSAFER",
+        "-dBATCH",
+        "-dNOPAUSE",
+        "-dEPSCrop",
+        "-sDEVICE=pngalpha",
+        f"-r{PS_TO_PNG_DPI}",
+        f"-sOutputFile={out_png}",
+        str(ps_path),
+    ]
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=PS_TO_PNG_TIMEOUT)
+    except FileNotFoundError as exc:
+        raise Http404("PostScript preview unavailable (missing gs)") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise Http404("PostScript preview unavailable (timeout)") from exc
+    except subprocess.CalledProcessError as exc:
+        raise Http404(f"PostScript preview unavailable: {(exc.stderr or '').strip()[:200]}") from exc
+
+    if not out_png.exists():
+        raise Http404("PostScript preview unavailable")
     return out_png
 
 
@@ -373,11 +416,17 @@ def get_asset(request, series_id: int, ref: str, page: int = 1):
         if rendered_asset.suffix.lower() == ".pdf":
             png = _pdf_to_png(rendered_asset, page=page)
             return _safe_file_response(png)
+        if rendered_asset.suffix.lower() in _POSTSCRIPT_EXTS:
+            png = _ps_to_png(rendered_asset)
+            return _safe_file_response(png)
         return _safe_file_response(rendered_asset)
 
     asset_path = _find_asset_file(semester_root=semester_root, tex_dir=tex_dir, ref=ref)
     if asset_path.suffix.lower() == ".pdf":
         png = _pdf_to_png(asset_path, page=page)
+        return _safe_file_response(png)
+    if asset_path.suffix.lower() in _POSTSCRIPT_EXTS:
+        png = _ps_to_png(asset_path)
         return _safe_file_response(png)
 
     # For eps/ps we try to map to a converted pdf above; if not found, we won't be here.

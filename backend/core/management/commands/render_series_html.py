@@ -1,12 +1,16 @@
+import concurrent.futures
 import hashlib
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
+from typing import Any, Callable
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import close_old_connections
 from django.utils import timezone
 
 from core.models import Series, Exercise
@@ -21,6 +25,15 @@ MARKER_RE = re.compile(rf"{MARKER_TOKEN}(\d+)")
 # Bump this when changing the render backend/options so cached HTML is regenerated.
 RENDER_PIPELINE_ID = "latexml-html5-fragment-v7"
 LATEXML_TIMEOUT = int(os.getenv("LATEXML_TIMEOUT_SECONDS", "60"))
+MPOST_TIMEOUT = int(os.getenv("MPOST_TIMEOUT_SECONDS", "20"))
+
+_MPOST_BLOCK_RE = re.compile(
+    r"\\begin\{(?P<kind>mpostcmd|mpostfile)\}"
+    r"(?:\{(?P<arg>[^}]*)\})?"
+    r"(?P<body>.*?)"
+    r"\\end\{(?P=kind)\}",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def _replace_markers_with_comments(html: str) -> str:
@@ -36,6 +49,127 @@ def _replace_markers_with_comments(html: str) -> str:
 
 def _strip_marker_tokens(text: str) -> str:
     return MARKER_RE.sub("", text)
+
+def _tex_uses_mpost(tex: str) -> bool:
+    return bool(re.search(r"\\begin\{mpost(?:cmd|file)\}", tex, re.IGNORECASE))
+
+
+def _strip_mpost_blocks(tex: str) -> str:
+    # LaTeXML does not execute mpostinl's side effects, so these blocks end up rendered
+    # as visible text. Strip them from the TeX we hand to LaTeXML (we compile them via
+    # `mpost` separately to generate the referenced `.mps` files).
+    return _MPOST_BLOCK_RE.sub("", tex)
+
+
+def _rewrite_includegraphics_wrappers(tex: str) -> str:
+    # Some legacy templates wrap `\includegraphics` in TeX boxing/parbox helpers which
+    # LaTeXML can drop. Rewrite to plain `\includegraphics` for previews.
+    tex = re.sub(
+        r"\\includegraphicsboxex(\[[^\]]*\])?\s*\{([^}]+)\}",
+        r"\\includegraphics\1{\2}",
+        tex,
+        flags=re.IGNORECASE,
+    )
+    tex = re.sub(
+        r"\\includegraphicsbox(\[[^\]]*\])?\s*\{([^}]+)\}",
+        r"\\includegraphics\1{\2}",
+        tex,
+        flags=re.IGNORECASE,
+    )
+    tex = re.sub(
+        r"\\includegraphicsex(\[[^\]]*\])?\s*\{([^}]+)\}",
+        r"\\includegraphics\1{\2}",
+        tex,
+        flags=re.IGNORECASE,
+    )
+    return tex
+
+
+def _generate_mpost_files(raw_tex: str, work_dir: Path) -> str:
+    """
+    Best-effort support for `mpostinl`-style inline MetaPost.
+
+    Many legacy sources generate `.mps` figures at LaTeX compile time via `mpost -tex=latex`.
+    LaTeXML does not execute that pipeline, so we pre-generate the `.mps` files in the
+    temporary render directory so `\\includegraphics...{...mps}` can resolve.
+
+    Returns a short log snippet (empty on success/no-op).
+    """
+    if not _tex_uses_mpost(raw_tex):
+        return ""
+
+    begin_doc = raw_tex.lower().find("\\begin{document}")
+    if begin_doc != -1:
+        preamble_tex = raw_tex[:begin_doc]
+        body_tex = raw_tex[begin_doc:]
+    else:
+        preamble_tex = raw_tex
+        body_tex = ""
+
+    pre_blocks = list(_MPOST_BLOCK_RE.finditer(preamble_tex))
+    body_blocks = list(_MPOST_BLOCK_RE.finditer(body_tex))
+    if not pre_blocks and not body_blocks:
+        return ""
+
+    mp_path = work_dir / "goldmine-inline-mpost.mp"
+    parts: list[str] = []
+    parts.append("% goldmine: generated inline metapost file\n")
+    parts.append("prologues:=2;\n")
+    parts.append("verbatimtex\n")
+    parts.append("%&latex\n")
+    parts.append("\\documentclass{article}\n")
+    parts.append("etex\n\n")
+    def emit_blocks(matches: list[re.Match[str]]) -> None:
+        for match in matches:
+            kind = (match.group("kind") or "").lower()
+            arg = (match.group("arg") or "").strip()
+            body = match.group("body") or ""
+            if kind == "mpostcmd":
+                parts.append(body.strip("\n") + "\n\n")
+                continue
+            if kind == "mpostfile" and arg:
+                # Mirror mpostinl.sty's wrapper: set output filename and wrap in a figure.
+                parts.append(f'filenametemplate "{arg}";\n')
+                parts.append("beginfig(0);\n")
+                parts.append(body.strip("\n") + "\n")
+                parts.append("endfig;\n\n")
+                continue
+
+    # In mpostinl.sty, blocks written during the TeX preamble land in the MP file
+    # before `\begin{document}` is emitted via `\AtBeginDocument`.
+    emit_blocks(pre_blocks)
+
+    parts.append("verbatimtex\n")
+    parts.append("\\begin{document}\n")
+    parts.append("etex\n\n")
+
+    emit_blocks(body_blocks)
+
+    parts.append("verbatimtex\n")
+    parts.append("\\end{document}\n")
+    parts.append("etex\n")
+    parts.append("end\n")
+
+    mp_path.write_text("".join(parts), encoding="utf-8", errors="ignore")
+
+    try:
+        result = subprocess.run(
+            ["mpost", "-tex=latex", mp_path.name],
+            cwd=str(work_dir),
+            capture_output=True,
+            text=True,
+            timeout=MPOST_TIMEOUT,
+        )
+    except FileNotFoundError as exc:
+        return f"mpost not found: {exc}"
+    except subprocess.TimeoutExpired:
+        return f"mpost timed out after {MPOST_TIMEOUT}s"
+
+    if result.returncode != 0:
+        snippet = "\n".join(x for x in [(result.stdout or "").strip(), (result.stderr or "").strip()] if x)
+        return (snippet or f"mpost exited with code {result.returncode}")[-2000:]
+
+    return ""
 
 
 def _line_has_uncommented_match(line: str, pattern: re.Pattern) -> bool:
@@ -262,7 +396,20 @@ def _render_tex_to_html(
         log_path = tmp / "latexmlc.log"
         babel_stub_path = tmp / "babel.sty"
         fixmath_stub_path = tmp / "fixmath.sty"
-        input_path.write_text(raw_tex, encoding="utf-8", errors="ignore")
+        mpost_log = _generate_mpost_files(raw_tex, work_dir=tmp)
+
+        tex_for_latexml = raw_tex
+        if _tex_uses_mpost(tex_for_latexml):
+            tex_for_latexml = _strip_mpost_blocks(tex_for_latexml)
+            tex_for_latexml = re.sub(
+                r"^\s*\\usepackage(?:\[[^\]]*\])?\{mpostinl\}\s*(?:%[^\n]*)?$",
+                "",
+                tex_for_latexml,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+            tex_for_latexml = _rewrite_includegraphics_wrappers(tex_for_latexml)
+
+        input_path.write_text(tex_for_latexml, encoding="utf-8", errors="ignore")
 
         # LaTeXML's interaction with the TeXlive babel package can be brittle and has
         # caused widespread failures across the corpus. For HTML previews we don't need
@@ -319,7 +466,13 @@ def _render_tex_to_html(
         ]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=LATEXML_TIMEOUT)
+            result = subprocess.run(
+                cmd,
+                cwd=str(tmp),
+                capture_output=True,
+                text=True,
+                timeout=LATEXML_TIMEOUT,
+            )
         except FileNotFoundError as exc:
             return 127, "", f"latexmlc not found: {exc}"
         except subprocess.TimeoutExpired as exc:
@@ -331,6 +484,8 @@ def _render_tex_to_html(
             timeout_parts.append(f"latexmlc timed out after {LATEXML_TIMEOUT}s")
             return 124, "", "\n".join(part.strip() for part in timeout_parts if part and part.strip())
         log_parts = []
+        if mpost_log:
+            log_parts.append(f"[mpost] {mpost_log}")
         if log_path.exists():
             try:
                 log_parts.append(log_path.read_text(encoding="utf-8"))
@@ -350,15 +505,21 @@ def _render_tex_to_html(
                 html = output_path.read_text(encoding="latin-1")
 
         if asset_out_dir and result.returncode == 0 and html.strip():
+            if asset_out_dir.exists() and asset_out_dir.is_file():
+                try:
+                    asset_out_dir.unlink()
+                except OSError:
+                    pass
+            try:
+                shutil.rmtree(asset_out_dir)
+            except FileNotFoundError:
+                pass
+            except OSError:
+                # Fall back to best-effort overwrites below.
+                pass
             asset_out_dir.mkdir(parents=True, exist_ok=True)
-            for child in list(asset_out_dir.rglob("*")):
-                if child.is_file():
-                    try:
-                        child.unlink()
-                    except OSError:
-                        pass
 
-            keep_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"}
+            keep_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mps"}
             for src in tmp.rglob("*"):
                 if not src.is_file():
                     continue
@@ -706,27 +867,108 @@ class Command(BaseCommand):
     help = "Render series TeX to HTML and cache it on the Series model. Uses LaTeXML for richer LaTeX support."
 
     def add_arguments(self, parser):
-        parser.add_argument('--series-id', type=int, help='Render a single series by id')
+        parser.add_argument(
+            "--series-id",
+            type=int,
+            action="append",
+            help="Render only the specified series id (repeatable)",
+        )
         parser.add_argument('--force', action='store_true', help='Force re-render even if checksum matches')
+        parser.add_argument(
+            "--jobs",
+            type=int,
+            default=int(os.getenv("LATEXML_JOBS", "1")),
+            help="Render multiple series in parallel (default: $LATEXML_JOBS or 1)",
+        )
 
     def handle(self, *args, **options):
         qs = Series.objects.all()
-        if options['series_id']:
-            qs = qs.filter(id=options['series_id'])
-        count = qs.count()
+        if options["series_id"]:
+            qs = qs.filter(id__in=options["series_id"])
+        series_ids = list(qs.values_list("id", flat=True))
+        count = len(series_ids)
         if count == 0:
             raise CommandError('No series matched the query.')
 
+        force = bool(options["force"])
+        jobs = int(options.get("jobs") or 1)
+        jobs = max(1, jobs)
+
+        output_lock = threading.Lock()
+        orig_stdout = self.stdout
+        orig_stderr = self.stderr
+
+        class _LockedOutput:
+            def __init__(self, inner):
+                self._inner = inner
+
+            def write(
+                self,
+                msg: str = "",
+                style_func: Callable[[str], str] | None = None,
+                ending: str | None = None,
+            ) -> None:
+                with output_lock:
+                    self._inner.write(msg, style_func=style_func, ending=ending)
+
+            def __getattr__(self, name: str) -> Any:
+                return getattr(self._inner, name)
+
+        if jobs > 1 and count > 1:
+            self.stdout = _LockedOutput(orig_stdout)
+            self.stderr = _LockedOutput(orig_stderr)
+
         successes = 0
-        for series in qs:
-            try:
-                if self.render_series(series, force=options['force']):
-                    successes += 1
-            except Exception as exc:  # noqa: BLE001 - propagate informative error per series
-                self.stderr.write(self.style.ERROR(f"Series {series.id}: {exc}"))
-                series.render_status = Series.RenderStatus.FAILED
-                series.render_log = str(exc)
-                series.save(update_fields=['render_status', 'render_log'])
+        try:
+            if jobs <= 1 or count <= 1:
+                for series_id in series_ids:
+                    series = None
+                    try:
+                        series = Series.objects.get(id=series_id)
+                        if self.render_series(series, force=force):
+                            successes += 1
+                    except Exception as exc:  # noqa: BLE001 - propagate informative error per series
+                        self.stderr.write(self.style.ERROR(f"Series {series_id}: {exc}"))
+                        if series is not None:
+                            try:
+                                series.render_status = Series.RenderStatus.FAILED
+                                series.render_log = str(exc)
+                                series.save(update_fields=["render_status", "render_log"])
+                            except Exception:
+                                Series.objects.filter(id=series_id).update(
+                                    render_status=Series.RenderStatus.FAILED,
+                                    render_log=str(exc),
+                                )
+                        else:
+                            Series.objects.filter(id=series_id).update(
+                                render_status=Series.RenderStatus.FAILED,
+                                render_log=str(exc),
+                            )
+            else:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+
+                    def run_one(series_id: int) -> bool:
+                        close_old_connections()
+                        try:
+                            series = Series.objects.get(id=series_id)
+                            return self.render_series(series, force=force)
+                        except Exception as exc:  # noqa: BLE001 - propagate informative error per series
+                            self.stderr.write(self.style.ERROR(f"Series {series_id}: {exc}"))
+                            Series.objects.filter(id=series_id).update(
+                                render_status=Series.RenderStatus.FAILED,
+                                render_log=str(exc),
+                            )
+                            return False
+                        finally:
+                            close_old_connections()
+
+                    futures = {pool.submit(run_one, sid): sid for sid in series_ids}
+                    for fut in concurrent.futures.as_completed(futures):
+                        if fut.result():
+                            successes += 1
+        finally:
+            self.stdout = orig_stdout
+            self.stderr = orig_stderr
 
         self.stdout.write(self.style.SUCCESS(f"Rendered {successes}/{count} series"))
 
@@ -747,9 +989,13 @@ class Command(BaseCommand):
         # Inline \\input / \\include so wrapper files still produce content.
         full_tex = _inline_inputs(tex_abs, semester_root)
 
-        checksum = hashlib.sha256(
-            (RENDER_PIPELINE_ID + "\n" + full_tex).encode("utf-8", errors="ignore")
-        ).hexdigest()
+        pipeline_id = RENDER_PIPELINE_ID
+        if _tex_uses_mpost(full_tex):
+            # Some documents rely on inline MetaPost (mpostinl) to generate `.mps` figures at
+            # compile time. Ensure these re-render now that we pre-generate `.mps` files.
+            pipeline_id = f"{pipeline_id}|mpost-v1"
+
+        checksum = hashlib.sha256((pipeline_id + "\n" + full_tex).encode("utf-8", errors="ignore")).hexdigest()
         if not force and series.tex_checksum == checksum and series.render_status == Series.RenderStatus.OK:
             _update_exercise_search_texts(series, series.html_content, stdout=self.stdout)
             self.stdout.write(f"Series {series.id}: up-to-date, skipping")
@@ -850,21 +1096,9 @@ class Command(BaseCommand):
                 count=1,
             )
 
-        # mpostinl embeds MetaPost source via the `mpostcmd` environment, which LaTeXML
-        # tends to treat as verbatim and then fails validation when TeX markup appears
-        # later in the file. For previews, drop these blocks and the package entirely.
-        raw_tex = re.sub(
-            r"^\s*\\usepackage(?:\[[^\]]*\])?\{mpostinl\}\s*$",
-            "",
-            raw_tex,
-            flags=re.MULTILINE | re.IGNORECASE,
-        )
-        raw_tex = re.sub(
-            r"\\begin\{mpostcmd\}[\s\S]*?\\end\{mpostcmd\}",
-            "",
-            raw_tex,
-            flags=re.IGNORECASE,
-        )
+        # Inline MetaPost (`mpostinl`) is handled inside `_render_tex_to_html`:
+        # we compile it separately to generate `.mps` assets, then strip the blocks
+        # from the TeX we hand to LaTeXML so the raw MetaPost code isn't rendered.
 
         # Some series use a custom `problems` document class that is not shipped with the
         # archive. For HTML previews, fall back to `article` and stub the key environments.

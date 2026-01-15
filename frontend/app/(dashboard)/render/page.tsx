@@ -40,6 +40,47 @@ type RenderJobCreatePayload = {
   force?: boolean;
 };
 
+type SemesterGroupList = {
+  id: number;
+  year: number;
+  semester: string;
+};
+
+type LectureListItem = {
+  id: number;
+  name: string;
+  long_name: string;
+  semester_groups: SemesterGroupList[];
+};
+
+type SeriesSummary = {
+  id: number;
+  number: number;
+  title: string;
+  render_status?: string | null;
+  html_rendered_at?: string | null;
+};
+
+type SemesterGroupDetail = {
+  id: number;
+  year: number;
+  semester: string;
+  series: SeriesSummary[];
+};
+
+type LectureDetail = {
+  id: number;
+  name: string;
+  long_name: string;
+  semester_groups: SemesterGroupDetail[];
+};
+
+type SeriesOption = SeriesSummary & {
+  semester: string;
+  year: number;
+  semester_group_id: number;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return '';
   const d = new Date(value);
@@ -52,6 +93,23 @@ function clampInt(value: string) {
   if (!/^\d+$/.test(trimmed)) return null;
   const n = Number.parseInt(trimmed, 10);
   return Number.isFinite(n) ? n : null;
+}
+
+function formatSemesterLabel(semester: string, year: number) {
+  return `${semester}${year}`;
+}
+
+function renderStatusMeta(status?: string | null) {
+  switch ((status || '').toLowerCase()) {
+    case 'ok':
+      return { label: 'Rendered', className: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600' };
+    case 'failed':
+      return { label: 'Failed', className: 'border-rose-500/20 bg-rose-500/10 text-rose-600' };
+    case 'not_rendered':
+      return { label: 'Not rendered', className: 'border-amber-500/20 bg-amber-500/10 text-amber-600' };
+    default:
+      return { label: 'Unknown', className: 'border-border/60 bg-muted/40 text-muted-foreground' };
+  }
 }
 
 export default function RenderJobsPage() {
@@ -68,6 +126,13 @@ export default function RenderJobsPage() {
 
   const { data: me } = useSWR<Me>('/auth/me', fetcher);
   const isStaff = !!(me && !('message' in me) && me.is_staff);
+
+  const {
+    data: lectureData,
+    error: lectureError,
+    isLoading: lectureLoading,
+  } = useSWR<LectureListItem[]>(isStaff ? '/lectures' : null, fetcher);
+  const lectures = lectureData ?? [];
 
   const {
     data: jobs,
@@ -98,10 +163,33 @@ export default function RenderJobsPage() {
     refreshInterval: shouldPollSelectedJob ? 1000 : 0,
   });
 
+  const [lectureId, setLectureId] = useState('');
+  const [semesterGroupId, setSemesterGroupId] = useState('all');
+  const [seriesFilter, setSeriesFilter] = useState('');
+  const [selectedSeriesIds, setSelectedSeriesIds] = useState<number[]>([]);
+  const [forceSelection, setForceSelection] = useState(false);
   const [seriesIdInput, setSeriesIdInput] = useState('');
-  const [force, setForce] = useState(false);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (lectureId || lectures.length === 0) return;
+    setLectureId(String(lectures[0].id));
+  }, [lectureId, lectures]);
+
+  const {
+    data: lectureDetail,
+    error: lectureDetailError,
+    isLoading: lectureDetailLoading,
+  } = useSWR<LectureDetail>(lectureId ? `/lectures/${lectureId}` : null, fetcher);
+
+  useEffect(() => {
+    if (!lectureId) return;
+    setSemesterGroupId('all');
+    setSeriesFilter('');
+    setSelectedSeriesIds([]);
+    setStartError(null);
+  }, [lectureId]);
 
   const canCancel = job?.status === 'running' || job?.status === 'queued';
 
@@ -111,6 +199,56 @@ export default function RenderJobsPage() {
     const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
     return { total, done, pct };
   }, [job]);
+
+  const seriesOptions = useMemo<SeriesOption[]>(() => {
+    if (!lectureDetail) return [];
+    return lectureDetail.semester_groups.flatMap((sg) =>
+      (sg.series || []).map((series) => ({
+        ...series,
+        semester: sg.semester,
+        year: sg.year,
+        semester_group_id: sg.id,
+      }))
+    );
+  }, [lectureDetail]);
+
+  const selectedSemesterGroup = useMemo(() => {
+    if (!lectureDetail || semesterGroupId === 'all') return null;
+    const id = Number(semesterGroupId);
+    if (!Number.isFinite(id)) return null;
+    return lectureDetail.semester_groups.find((sg) => sg.id === id) ?? null;
+  }, [lectureDetail, semesterGroupId]);
+
+  const scopedSeries = useMemo(() => {
+    if (!lectureDetail) return [];
+    if (semesterGroupId === 'all') return seriesOptions;
+    const id = Number(semesterGroupId);
+    if (!Number.isFinite(id)) return seriesOptions;
+    return seriesOptions.filter((series) => series.semester_group_id === id);
+  }, [lectureDetail, semesterGroupId, seriesOptions]);
+
+  const visibleSeries = useMemo(() => {
+    const query = seriesFilter.trim().toLowerCase();
+    if (!query) return scopedSeries;
+    return scopedSeries.filter((series) => {
+      const title = (series.title || '').toLowerCase();
+      const number = String(series.number);
+      const id = String(series.id);
+      const semesterLabel = formatSemesterLabel(series.semester, series.year).toLowerCase();
+      return (
+        title.includes(query) ||
+        number.includes(query) ||
+        id.includes(query) ||
+        semesterLabel.includes(query)
+      );
+    });
+  }, [scopedSeries, seriesFilter]);
+
+  const selectedSeriesSet = useMemo(() => new Set(selectedSeriesIds), [selectedSeriesIds]);
+  const selectedVisibleCount = useMemo(
+    () => visibleSeries.filter((series) => selectedSeriesSet.has(series.id)).length,
+    [visibleSeries, selectedSeriesSet]
+  );
 
   const startJob = async (payload: RenderJobCreatePayload) => {
     setStarting(true);
@@ -135,13 +273,57 @@ export default function RenderJobsPage() {
     await startJob({ scope: 'all', force: forceFlag });
   };
 
-  const startSeries = async () => {
+  const startSelection = async (seriesIds: number[]) => {
+    const unique = Array.from(new Set(seriesIds))
+      .filter((id) => Number.isFinite(id))
+      .sort((a, b) => a - b);
+    if (unique.length === 0) {
+      setStartError('Select at least one series to render.');
+      return;
+    }
+    await startJob({ scope: 'series', series_ids: unique, force: forceSelection });
+  };
+
+  const startSeriesById = async () => {
     const id = clampInt(seriesIdInput);
     if (!id) {
       setStartError('Please enter a valid numeric series id.');
       return;
     }
-    await startJob({ scope: 'series', series_ids: [id], force });
+    await startSelection([id]);
+  };
+
+  const toggleSeriesSelection = (id: number) => {
+    setStartError(null);
+    setSelectedSeriesIds((prev) => (prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]));
+  };
+
+  const replaceSelection = (ids: number[]) => {
+    setStartError(null);
+    setSelectedSeriesIds(Array.from(new Set(ids)));
+  };
+
+  const addToSelection = (ids: number[]) => {
+    setStartError(null);
+    setSelectedSeriesIds((prev) => Array.from(new Set([...prev, ...ids])));
+  };
+
+  const selectLectureSeries = () => {
+    replaceSelection(seriesOptions.map((series) => series.id));
+  };
+
+  const selectSemesterSeries = () => {
+    if (!selectedSemesterGroup) return;
+    replaceSelection(selectedSemesterGroup.series.map((series) => series.id));
+  };
+
+  const addVisibleSeries = () => {
+    addToSelection(visibleSeries.map((series) => series.id));
+  };
+
+  const clearSelection = () => {
+    setStartError(null);
+    setSelectedSeriesIds([]);
   };
 
   const cancelSelected = async () => {
@@ -232,29 +414,171 @@ export default function RenderJobsPage() {
               </Button>
             </div>
 
-            <div className="pt-2 border-t border-border/50 space-y-2">
-              <div className="text-sm font-medium text-muted-foreground">Render one series</div>
-              <div className="flex items-center gap-2">
-                <input
-                  value={seriesIdInput}
-                  onChange={(e) => setSeriesIdInput(e.target.value)}
-                  className="w-32 rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
-                  placeholder="Series id"
-                  inputMode="numeric"
-                />
+            <div className="pt-2 border-t border-border/50 space-y-4">
+              <div className="text-sm font-medium text-muted-foreground">Render by lecture / semester / sheet</div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Lecture</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    value={lectureId}
+                    onChange={(e) => setLectureId(e.target.value)}
+                    disabled={lectureLoading || lectures.length === 0}
+                  >
+                    {lectureId === '' && lectures.length > 0 && (
+                      <option value="" disabled>
+                        Select a lecture
+                      </option>
+                    )}
+                    {lectures.length === 0 && !lectureLoading && <option value="">No lectures available</option>}
+                    {lectures.map((lec) => (
+                      <option key={lec.id} value={String(lec.id)}>
+                        {lec.name} — {lec.long_name}
+                      </option>
+                    ))}
+                  </select>
+                  {lectureLoading && <div className="text-xs text-muted-foreground">Loading lectures…</div>}
+                  {lectureError && <div className="text-xs text-destructive">Failed to load lectures.</div>}
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-muted-foreground">Semester</label>
+                  <select
+                    className="w-full rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    value={semesterGroupId}
+                    onChange={(e) => setSemesterGroupId(e.target.value)}
+                    disabled={!lectureDetail || lectureDetailLoading}
+                  >
+                    <option value="all">All semesters</option>
+                    {(lectureDetail?.semester_groups || []).map((sg) => (
+                      <option key={sg.id} value={String(sg.id)}>
+                        {formatSemesterLabel(sg.semester, sg.year)}
+                      </option>
+                    ))}
+                  </select>
+                  {lectureDetailLoading && <div className="text-xs text-muted-foreground">Loading semesters…</div>}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={seriesFilter}
+                    onChange={(e) => setSeriesFilter(e.target.value)}
+                    className="flex-1 min-w-[180px] rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    placeholder="Filter sheets by title, number, or id"
+                  />
+                  <Button size="sm" variant="outline" onClick={addVisibleSeries} disabled={visibleSeries.length === 0}>
+                    Add visible
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={clearSelection} disabled={selectedSeriesIds.length === 0}>
+                    Clear
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Selected {selectedSeriesIds.length} sheet{selectedSeriesIds.length === 1 ? '' : 's'}
+                  {selectedSeriesIds.length > 0 && selectedVisibleCount !== selectedSeriesIds.length
+                    ? ` (${selectedVisibleCount} visible)`
+                    : ''}
+                  · {scopedSeries.length} in scope
+                </div>
+              </div>
+
+              <div className="max-h-64 overflow-auto rounded-md border border-border/60 bg-background/50 p-2 space-y-1">
+                {lectureDetailLoading && <div className="p-2 text-xs text-muted-foreground">Loading sheets…</div>}
+                {!lectureDetailLoading && lectureDetailError && (
+                  <div className="p-2 text-xs text-destructive">Failed to load lecture details.</div>
+                )}
+                {!lectureDetailLoading && !lectureDetailError && !lectureDetail && (
+                  <div className="p-2 text-xs text-muted-foreground">Select a lecture to load sheets.</div>
+                )}
+                {!lectureDetailLoading && lectureDetail && visibleSeries.length === 0 && (
+                  <div className="p-2 text-xs text-muted-foreground">No sheets match this selection.</div>
+                )}
+                {visibleSeries.map((series) => {
+                  const status = renderStatusMeta(series.render_status);
+                  return (
+                    <label
+                      key={series.id}
+                      className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={selectedSeriesSet.has(series.id)}
+                        onChange={() => toggleSeriesSelection(series.id)}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium truncate">
+                          Series {series.number}
+                          {series.title ? ` · ${series.title}` : ''}
+                        </div>
+                        <div className="text-xs text-muted-foreground font-mono">
+                          #{series.id} · {formatSemesterLabel(series.semester, series.year)}
+                        </div>
+                      </div>
+                      <span className={`rounded-full border px-2 py-0.5 text-[10px] ${status.className}`}>
+                        {status.label}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={selectLectureSeries}
+                  disabled={!lectureDetail || seriesOptions.length === 0}
+                >
+                  Select lecture ({seriesOptions.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={selectSemesterSeries}
+                  disabled={!selectedSemesterGroup || (selectedSemesterGroup?.series.length || 0) === 0}
+                >
+                  Select semester{selectedSemesterGroup ? ` (${selectedSemesterGroup.series.length})` : ''}
+                </Button>
                 <label className="flex items-center gap-2 text-sm text-muted-foreground">
                   <input
                     type="checkbox"
-                    checked={force}
-                    onChange={(e) => setForce(e.target.checked)}
+                    checked={forceSelection}
+                    onChange={(e) => setForceSelection(e.target.checked)}
                     className="h-4 w-4"
                   />
-                  Force
+                  Force re-render
                 </label>
-                <Button size="sm" onClick={startSeries} disabled={starting} className="gap-2">
-                  <Play className="h-4 w-4" /> Go
+                <Button
+                  size="sm"
+                  onClick={() => startSelection(selectedSeriesIds)}
+                  disabled={starting || selectedSeriesIds.length === 0}
+                  className="gap-2"
+                >
+                  <Play className="h-4 w-4" /> Render selected ({selectedSeriesIds.length})
                 </Button>
               </div>
+
+              <div className="pt-2 border-t border-border/50 space-y-2">
+                <div className="text-sm font-medium text-muted-foreground">Render one series by ID</div>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={seriesIdInput}
+                    onChange={(e) => setSeriesIdInput(e.target.value)}
+                    className="w-32 rounded-md border border-input bg-background/50 px-3 py-2 text-sm focus:border-primary focus:ring-1 focus:ring-primary transition-all"
+                    placeholder="Series id"
+                    inputMode="numeric"
+                  />
+                  <Button size="sm" onClick={startSeriesById} disabled={starting} className="gap-2">
+                    <Play className="h-4 w-4" /> Go
+                  </Button>
+                </div>
+                <div className="text-xs text-muted-foreground">Uses the force toggle above.</div>
+              </div>
+
               {startError && <div className="text-sm text-destructive">{startError}</div>}
             </div>
           </Card>

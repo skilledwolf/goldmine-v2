@@ -202,32 +202,12 @@ def run_render_job(job_id: int) -> None:
             ]
             series_ids = sorted(set(series_ids))
             total = len(series_ids)
+            argv = ["render_series_html"]
             for series_id in series_ids:
-                # Stop before starting the next series if cancelled.
-                if RenderJob.objects.filter(id=job.id, status=RenderJob.Status.CANCELLED).exists():
-                    break
-                argv = ["render_series_html", "--series-id", str(series_id)]
-                if job.force:
-                    argv.append("--force")
-                _run_command_for_job(job.id, argv, total_override=total, finalize=False)
-            final = RenderJob.objects.get(id=job.id)
-            if final.status == RenderJob.Status.CANCELLED:
-                RenderJob.objects.filter(id=job.id).update(
-                    finished_at=timezone.now(),
-                    pid=None,
-                    updated_at=timezone.now(),
-                )
-                return
-            final_status = (
-                RenderJob.Status.SUCCEEDED if final.failed_count == 0 else RenderJob.Status.FAILED
-            )
-            RenderJob.objects.filter(id=job.id).update(
-                status=final_status,
-                finished_at=timezone.now(),
-                pid=None,
-                return_code=0,
-                updated_at=timezone.now(),
-            )
+                argv.extend(["--series-id", str(series_id)])
+            if job.force:
+                argv.append("--force")
+            _run_command_for_job(job.id, argv, total_override=total)
             return
 
         argv = ["render_series_html"]

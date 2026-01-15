@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.log
+
+.env
+.env.*
+
+# Large runtime-mounted lecture archive; not needed in image build context.
+media/lectures/
+
+# Generated outputs/caches.
+media/latexml-assets/
+media/staticfiles/
+
+# Local tooling artifacts.
+.pytest_cache/
+.mypy_cache/

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
-    User,
     Search,
     FileText,
     Home,
@@ -136,15 +135,7 @@ export function CommandMenu() {
 
                         <Command.Separator className="my-1 h-px bg-border/50" />
 
-                        <Command.Group heading="Settings" className="text-xs font-medium text-muted-foreground px-2 mt-2 mb-2">
-                            <Command.Item
-                                className="relative flex cursor-default select-none items-center rounded-sm px-2 py-2 text-sm outline-none aria-selected:bg-accent aria-selected:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50"
-                            >
-                                <User className="mr-2 h-4 w-4" />
-                                <span>Profile</span>
-                                <span className="ml-auto text-xs text-muted-foreground tracking-widest">⌘P</span>
-                            </Command.Item>
-                        </Command.Group>
+                        
                     </>
                 )}
 
