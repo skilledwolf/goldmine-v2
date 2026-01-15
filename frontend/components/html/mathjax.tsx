@@ -97,7 +97,7 @@ function transformLatexmlExerciseHeadings(root: HTMLElement) {
   const headings = Array.from(root.querySelectorAll<HTMLElement>('h2.ltx_title'));
   for (const h2 of headings) {
     const raw = (h2.textContent || '').replace(/\s+/g, ' ').trim();
-    const match = raw.match(/^(Exercise|Aufgabe)\s+(\d+)\.?\s*$/i);
+    const match = raw.match(/^(Exercise|Aufgabe|Problem)\s+(\d+)\.?\s*$/i);
     if (!match) continue;
     const label = match[1];
     const num = match[2];
@@ -112,7 +112,8 @@ function transformLatexmlExerciseHeadings(root: HTMLElement) {
     const titleHtml = (bold.innerHTML || '').trim();
     if (!titleHtml) continue;
 
-    h2.innerHTML = `${label} ${num}: ${titleHtml}`;
+    const separator = label.toLowerCase() === 'problem' ? '. ' : ': ';
+    h2.innerHTML = `${label} ${num}${separator}${titleHtml}`;
 
     bold.remove();
     const maybePara = firstBlock?.querySelector('p');
@@ -123,6 +124,23 @@ function transformLatexmlExerciseHeadings(root: HTMLElement) {
       firstBlock.remove();
     }
   }
+}
+
+function transformLatexmlUnnumberedExerciseHeading(root: HTMLElement) {
+  // Only add an "Exercise N:" prefix when the caller sets up the exercise counter reset
+  // (i.e. per-exercise rendering on the series page).
+  if (!root.style.counterReset) return;
+
+  const firstHeading = root.querySelector<HTMLElement>('h2.ltx_title');
+  if (!firstHeading) return;
+
+  const raw = (firstHeading.textContent || '').replace(/\s+/g, ' ').trim();
+  // If the heading already contains its own numbering (LaTeXML `Exercise 1: ...` etc),
+  // keep it as-is so we don't get a duplicated "Exercise N:" prefix from CSS.
+  if (/^(Exercise|Aufgabe|Problem)\s+\d+\b/i.test(raw)) return;
+
+  // Allow CSS counters to inject "Exercise N:" using `.prose-exercise h2:not(.ltx_title)::before`.
+  firstHeading.classList.remove('ltx_title');
 }
 
 function transformLatexmlFootnotes(root: HTMLElement) {
@@ -185,9 +203,16 @@ function transformHints(root: HTMLElement) {
   for (const el of italics) {
     const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
     if (!/^(hinweis|hinweise|hint|hints)\s*:/i.test(text)) continue;
-    const container = el.closest<HTMLElement>('div.ltx_para') || el.closest<HTMLElement>('p') || null;
-    if (!container) continue;
-    container.classList.add('gm-hint');
+
+    const p = el.closest<HTMLElement>('p') || null;
+    if (!p) continue;
+
+    if (p.closest('.gm-hint')) continue;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'gm-hint';
+    p.replaceWith(wrapper);
+    wrapper.appendChild(p);
   }
 }
 
@@ -437,6 +462,7 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
         }
 
         transformLatexmlExerciseHeadings(node);
+        transformLatexmlUnnumberedExerciseHeading(node);
         transformLearningGoals(node);
         transformHints(node);
         transformLatexmlEquationAlignment(node);

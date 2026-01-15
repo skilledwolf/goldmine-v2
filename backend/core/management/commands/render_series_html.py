@@ -18,7 +18,7 @@ MARKER_TOKEN = "GMEXMARKER-"
 MARKER_RE = re.compile(rf"{MARKER_TOKEN}(\d+)")
 
 # Bump this when changing the render backend/options so cached HTML is regenerated.
-RENDER_PIPELINE_ID = "latexml-html5-fragment-v6"
+RENDER_PIPELINE_ID = "latexml-html5-fragment-v7"
 
 
 def _replace_markers_with_comments(html: str) -> str:
@@ -894,6 +894,8 @@ class Command(BaseCommand):
 \providecommand{\exercise}[1]{\subsection*{#1}}
 \providecommand{\subuebung}[1]{\subsubsection*{#1}}
 \providecommand{\subexercise}[1]{\subsubsection*{#1}}
+\providecommand{\keywords}[1]{}
+\renewcommand{\keywords}[1]{}
 """.strip()
         if _tex_has_solution_env(scan_tex):
             show_solutions = True

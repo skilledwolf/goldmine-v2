@@ -87,6 +87,13 @@ export function Sidebar() {
         // { name: 'Settings', href: '/settings', icon: Settings },
     ];
 
+    const adminItems = [
+        { name: 'Uploads', href: '/uploads', icon: UploadCloud, external: false },
+        { name: 'HTML render', href: '/render', icon: Wand2, external: false },
+        { name: 'Issues', href: '/issues', icon: Shield, external: false },
+        { name: 'Backend admin', href: adminHref, icon: Shield, external: true },
+    ] as const;
+
     return (
         <div
             className={cn(
@@ -184,86 +191,57 @@ export function Sidebar() {
                     </Link>
                 </Button>
                 {isStaff && (
+                    <div className="border-t border-border/50 pt-3">
+                        {!collapsed && (
+                            <div className="px-2 pb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                                Administration
+                            </div>
+                        )}
+                        <div className="space-y-1">
+                            {adminItems.map((item) => (
+                                <Button
+                                    key={item.name}
+                                    variant="ghost"
+                                    className={cn(
+                                        "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                                        collapsed && "justify-center px-2"
+                                    )}
+                                    asChild
+                                    title={collapsed ? item.name : undefined}
+                                >
+                                    {item.external ? (
+                                        <a href={item.href} target="_blank" rel="noreferrer">
+                                            <item.icon className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                                            {!collapsed && item.name}
+                                            {collapsed && <span className="sr-only">{item.name}</span>}
+                                        </a>
+                                    ) : (
+                                        <Link href={item.href}>
+                                            <item.icon className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                                            {!collapsed && item.name}
+                                            {collapsed && <span className="sr-only">{item.name}</span>}
+                                        </Link>
+                                    )}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+                <div className={cn(isStaff && "border-t border-border/50 pt-3")}>
                     <Button
                         variant="ghost"
                         className={cn(
-                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                            "w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10",
                             collapsed && "justify-center px-2"
                         )}
-                        asChild
-                        title={collapsed ? "Uploads" : undefined}
+                        onClick={handleLogout}
+                        title={collapsed ? "Log out" : undefined}
                     >
-                        <Link href="/uploads">
-                            <UploadCloud className={cn("h-5 w-5", !collapsed && "mr-3")} />
-                            {!collapsed && "Uploads"}
-                            {collapsed && <span className="sr-only">Uploads</span>}
-                        </Link>
+                        <LogOut className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                        {!collapsed && "Log out"}
+                        {collapsed && <span className="sr-only">Log out</span>}
                     </Button>
-                )}
-                {isStaff && (
-                    <Button
-                        variant="ghost"
-                        className={cn(
-                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                            collapsed && "justify-center px-2"
-                        )}
-                        asChild
-                        title={collapsed ? "HTML render" : undefined}
-                    >
-                        <Link href="/render">
-                            <Wand2 className={cn("h-5 w-5", !collapsed && "mr-3")} />
-                            {!collapsed && "HTML render"}
-                            {collapsed && <span className="sr-only">HTML render</span>}
-                        </Link>
-                    </Button>
-                )}
-                {isStaff && (
-                    <Button
-                        variant="ghost"
-                        className={cn(
-                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                            collapsed && "justify-center px-2"
-                        )}
-                        asChild
-                        title={collapsed ? "Issues" : undefined}
-                    >
-                        <Link href="/issues">
-                            <Shield className={cn("h-5 w-5", !collapsed && "mr-3")} />
-                            {!collapsed && "Issues"}
-                            {collapsed && <span className="sr-only">Issues</span>}
-                        </Link>
-                    </Button>
-                )}
-                {isStaff && (
-                    <Button
-                        variant="ghost"
-                        className={cn(
-                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
-                            collapsed && "justify-center px-2"
-                        )}
-                        asChild
-                        title={collapsed ? "Backend admin" : undefined}
-                    >
-                        <a href={adminHref} target="_blank" rel="noreferrer">
-                            <Shield className={cn("h-5 w-5", !collapsed && "mr-3")} />
-                            {!collapsed && "Backend admin"}
-                            {collapsed && <span className="sr-only">Backend admin</span>}
-                        </a>
-                    </Button>
-                )}
-                <Button
-                    variant="ghost"
-                    className={cn(
-                        "w-full justify-start text-muted-foreground hover:text-destructive hover:bg-destructive/10",
-                        collapsed && "justify-center px-2"
-                    )}
-                    onClick={handleLogout}
-                    title={collapsed ? "Log out" : undefined}
-                >
-                    <LogOut className={cn("h-5 w-5", !collapsed && "mr-3")} />
-                    {!collapsed && "Log out"}
-                    {collapsed && <span className="sr-only">Log out</span>}
-                </Button>
+                </div>
             </div>
         </div>
     );
