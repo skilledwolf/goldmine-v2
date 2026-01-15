@@ -13,6 +13,7 @@ import {
     Mountain,
     Search,
     Shield,
+    Wand2,
     UploadCloud,
     PanelLeftClose,
     PanelLeftOpen,
@@ -196,6 +197,23 @@ export function Sidebar() {
                             <UploadCloud className={cn("h-5 w-5", !collapsed && "mr-3")} />
                             {!collapsed && "Uploads"}
                             {collapsed && <span className="sr-only">Uploads</span>}
+                        </Link>
+                    </Button>
+                )}
+                {isStaff && (
+                    <Button
+                        variant="ghost"
+                        className={cn(
+                            "w-full justify-start text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                            collapsed && "justify-center px-2"
+                        )}
+                        asChild
+                        title={collapsed ? "HTML render" : undefined}
+                    >
+                        <Link href="/render">
+                            <Wand2 className={cn("h-5 w-5", !collapsed && "mr-3")} />
+                            {!collapsed && "HTML render"}
+                            {collapsed && <span className="sr-only">HTML render</span>}
                         </Link>
                     </Button>
                 )}

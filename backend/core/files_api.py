@@ -16,6 +16,7 @@ files_router = Router()
 
 
 PDF_PREVIEW_CACHE_DIR = Path("/tmp/goldmine_pdf_previews")
+RENDERED_ASSET_ROOT = Path(settings.MEDIA_ROOT) / "latexml-assets"
 
 
 def _safe_file_response(file_path: Path) -> FileResponse:
@@ -156,6 +157,57 @@ def _find_asset_file(semester_root: Path, tex_dir: Path, ref: str) -> Path:
         return resolved
 
     raise Http404("Asset not found")
+
+
+def _find_rendered_asset_file(series_id: int, ref: str) -> Path | None:
+    cleaned = (ref or "").strip()
+    if not cleaned:
+        return None
+
+    cleaned = unquote(cleaned)
+    cleaned = cleaned.split("?", 1)[0].split("#", 1)[0]
+    cleaned = cleaned.lstrip("/")
+
+    root = RENDERED_ASSET_ROOT / str(series_id)
+    base = Path(cleaned)
+
+    candidates: list[Path] = []
+
+    def add_variants(p: Path):
+        if p.suffix:
+            candidates.append(p)
+            return
+        candidates.append(p)
+        for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"]:
+            candidates.append(p.with_suffix(ext))
+
+    add_variants(root / base)
+
+    try:
+        root_resolved = root.resolve()
+    except OSError:
+        root_resolved = root
+
+    for cand in candidates:
+        try:
+            resolved = cand.resolve()
+        except OSError:
+            continue
+        if not resolved.is_file():
+            alt = _case_insensitive_file(cand)
+            if not alt:
+                continue
+            try:
+                resolved = alt.resolve()
+            except OSError:
+                continue
+            if not resolved.is_file():
+                continue
+        if not resolved.is_relative_to(root_resolved):
+            continue
+        return resolved
+
+    return None
 
 
 def _pdf_to_png(pdf_path: Path, page: int = 1) -> Path:
@@ -309,6 +361,13 @@ def get_asset(request, series_id: int, ref: str, page: int = 1):
     semester_root = Path(settings.LECTURE_MEDIA_ROOT) / fs_path
     tex_abs = semester_root / series.tex_file
     tex_dir = tex_abs.parent
+
+    rendered_asset = _find_rendered_asset_file(series_id=series_id, ref=ref)
+    if rendered_asset is not None:
+        if rendered_asset.suffix.lower() == ".pdf":
+            png = _pdf_to_png(rendered_asset, page=page)
+            return _safe_file_response(png)
+        return _safe_file_response(rendered_asset)
 
     asset_path = _find_asset_file(semester_root=semester_root, tex_dir=tex_dir, ref=ref)
     if asset_path.suffix.lower() == ".pdf":

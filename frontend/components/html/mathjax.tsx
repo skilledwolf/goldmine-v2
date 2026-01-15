@@ -63,7 +63,9 @@ function transformSolutions(root: HTMLElement) {
   for (const bq of blockquotes) {
     const firstP = bq.querySelector('p');
     const strong = firstP?.querySelector('strong');
-    const label = strong?.textContent?.trim().replace(/\.$/, '').toLowerCase();
+    const boldSpan = !strong ? firstP?.querySelector('span.ltx_font_bold') : null;
+    const labelNode = strong || boldSpan;
+    const label = labelNode?.textContent?.trim().replace(/\.$/, '').toLowerCase();
     if (label !== 'solution') continue;
 
     const details = document.createElement('details');
@@ -77,8 +79,8 @@ function transformSolutions(root: HTMLElement) {
     nodes.forEach((node) => {
       if (node === firstP) {
         const clone = (node as HTMLElement).cloneNode(true) as HTMLElement;
-        const strongNode = clone.querySelector('strong');
-        if (strongNode) strongNode.remove();
+        const labelClone = clone.querySelector('strong, span.ltx_font_bold');
+        if (labelClone) labelClone.remove();
         if (clone.textContent?.trim()) {
           details.appendChild(clone);
         }
@@ -88,6 +90,120 @@ function transformSolutions(root: HTMLElement) {
     });
 
     bq.replaceWith(details);
+  }
+}
+
+function transformLatexmlExerciseHeadings(root: HTMLElement) {
+  const headings = Array.from(root.querySelectorAll<HTMLElement>('h2.ltx_title'));
+  for (const h2 of headings) {
+    const raw = (h2.textContent || '').replace(/\s+/g, ' ').trim();
+    const match = raw.match(/^(Exercise|Aufgabe)\s+(\d+)\.?\s*$/i);
+    if (!match) continue;
+    const label = match[1];
+    const num = match[2];
+
+    const section = h2.closest<HTMLElement>('section.ltx_paragraph');
+    if (!section) continue;
+
+    const firstBlock = h2.nextElementSibling as HTMLElement | null;
+    const bold = firstBlock?.querySelector<HTMLElement>('span.ltx_text.ltx_font_bold');
+    if (!bold) continue;
+
+    const titleHtml = (bold.innerHTML || '').trim();
+    if (!titleHtml) continue;
+
+    h2.innerHTML = `${label} ${num}: ${titleHtml}`;
+
+    bold.remove();
+    const maybePara = firstBlock?.querySelector('p');
+    if (maybePara && !(maybePara.textContent || '').trim()) {
+      maybePara.remove();
+    }
+    if (firstBlock && !(firstBlock.textContent || '').trim()) {
+      firstBlock.remove();
+    }
+  }
+}
+
+function transformLatexmlFootnotes(root: HTMLElement) {
+  const notes = Array.from(root.querySelectorAll<HTMLElement>('span.ltx_note.ltx_role_footnote'));
+  if (notes.length === 0) return;
+
+  const section = document.createElement('section');
+  section.className = 'footnotes';
+  section.appendChild(document.createElement('hr'));
+
+  const ol = document.createElement('ol');
+  section.appendChild(ol);
+
+  for (const note of notes) {
+    const mark = (note.querySelector('sup.ltx_note_mark')?.textContent || '').trim();
+    const number = mark || String(ol.children.length + 1);
+    const numericValue = /^\d+$/.test(number) ? Number.parseInt(number, 10) : null;
+
+    const content = note.querySelector<HTMLElement>('span.ltx_note_outer > span.ltx_note_content');
+    let bodyHtml = '';
+    if (content) {
+      const clone = content.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('sup.ltx_note_mark, span.ltx_tag_note').forEach((el) => el.remove());
+      bodyHtml = (clone.innerHTML || '').trim();
+    } else {
+      bodyHtml = (note.textContent || '').trim();
+    }
+
+    const sup = document.createElement('sup');
+    sup.className = 'gm-footnote-ref';
+    sup.textContent = number;
+    note.replaceWith(sup);
+
+    const li = document.createElement('li');
+    if (numericValue !== null && Number.isFinite(numericValue)) {
+      li.value = numericValue;
+    }
+    li.innerHTML = bodyHtml;
+    ol.appendChild(li);
+  }
+
+  if (ol.children.length > 0) {
+    root.appendChild(section);
+  }
+}
+
+function transformLearningGoals(root: HTMLElement) {
+  const italics = Array.from(root.querySelectorAll<HTMLElement>('span.ltx_text.ltx_font_italic'));
+  for (const el of italics) {
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!/^lernziel\s*:/i.test(text) && !/^learning goal\s*:/i.test(text)) continue;
+    const container = el.closest<HTMLElement>('div.ltx_para') || el.closest<HTMLElement>('p') || null;
+    if (!container) continue;
+    container.classList.add('gm-goal');
+  }
+}
+
+function transformHints(root: HTMLElement) {
+  const italics = Array.from(root.querySelectorAll<HTMLElement>('span.ltx_text.ltx_font_italic'));
+  for (const el of italics) {
+    const text = (el.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!/^(hinweis|hinweise|hint|hints)\s*:/i.test(text)) continue;
+    const container = el.closest<HTMLElement>('div.ltx_para') || el.closest<HTMLElement>('p') || null;
+    if (!container) continue;
+    container.classList.add('gm-hint');
+  }
+}
+
+function transformLatexmlEquationAlignment(root: HTMLElement) {
+  const rows = Array.from(root.querySelectorAll<HTMLTableRowElement>('table.ltx_eqn_table tr.ltx_eqn_row'));
+  for (const row of rows) {
+    // In many LaTeXML outputs (esp. `align`), a single-column equation may still be tagged as `ltx_align_right`.
+    // When there's no left column, treat it as centered (like TeX would).
+    if (row.querySelector('td.ltx_align_left')) continue;
+
+    const mathCells = Array.from(
+      row.querySelectorAll<HTMLTableCellElement>('td.ltx_eqn_cell.ltx_align_right:not(.ltx_eqn_eqno)')
+    );
+    for (const cell of mathCells) {
+      cell.classList.remove('ltx_align_right');
+    }
   }
 }
 
@@ -136,7 +252,7 @@ async function ensureMathJaxReady() {
               Re: '\\operatorname{Re}',
             },
             // Number all display math by default (starred envs remain unnumbered).
-            // This also covers plain `\[ ... \]` blocks produced by pandoc.
+            // This also covers plain `\[ ... \]` blocks produced by the TeX->HTML renderer.
             tags: 'all',
           },
           options: {
@@ -246,7 +362,15 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
 
         const apiBase = getApiBase();
 
-        // Pandoc emits <embed src="..."> for some includes (PDF/EPS). Convert those to <img>
+        const links = Array.from(node.querySelectorAll<HTMLAnchorElement>('a[href]'));
+        for (const link of links) {
+          const href = link.getAttribute('href') || '';
+          if (/^www\./i.test(href)) {
+            link.setAttribute('href', `https://${href}`);
+          }
+        }
+
+        // Some renderers emit <embed src="..."> for some includes (PDF/EPS). Convert those to <img>
         // so we can rewrite them to the API asset endpoint and show a placeholder on failure.
         const embeds = Array.from(node.querySelectorAll<HTMLEmbedElement>('embed[src]'));
         for (const embed of embeds) {
@@ -312,6 +436,11 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
           }
         }
 
+        transformLatexmlExerciseHeadings(node);
+        transformLearningGoals(node);
+        transformHints(node);
+        transformLatexmlEquationAlignment(node);
+        transformLatexmlFootnotes(node);
         transformSolutions(node);
 
         if (counterGroup) {

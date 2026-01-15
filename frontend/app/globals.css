@@ -183,13 +183,16 @@
   }
 
   .prose-exercise h2 {
-    counter-increment: exercise;
     font-size: 1.125rem;
     font-weight: 700;
     line-height: 1.35;
   }
 
-  .prose-exercise h2::before {
+  .prose-exercise h2:not(.ltx_title) {
+    counter-increment: exercise;
+  }
+
+  .prose-exercise h2:not(.ltx_title)::before {
     content: "Exercise " counter(exercise) ": ";
     font-weight: 600;
     opacity: 0.85;
@@ -203,13 +206,16 @@
 
   /* Figures: clearer layout + numbered captions */
   .prose-exercise figure {
-    counter-increment: figure;
     margin-top: 1.25rem;
     margin-bottom: 1.25rem;
     padding: 0.75rem;
     border: 1px solid var(--border);
     border-radius: var(--radius);
     background: color-mix(in oklch, var(--muted) 55%, transparent);
+  }
+
+  .prose-exercise figure:not(.ltx_figure) {
+    counter-increment: figure;
   }
 
   .prose-exercise figure>img {
@@ -224,7 +230,18 @@
   }
 
   .prose-exercise figure>figcaption::before {
+    /* LaTeXML already emits its own "Figure N:" label; keep our numbering for non-LaTeXML figures only. */
+    display: none;
     content: "Fig. " counter(figure) ". ";
+    font-weight: 600;
+    color: var(--foreground);
+  }
+
+  .prose-exercise figure:not(.ltx_figure)>figcaption::before {
+    display: inline;
+  }
+
+  .prose-exercise figure.ltx_figure>figcaption .ltx_tag_figure {
     font-weight: 600;
     color: var(--foreground);
   }
@@ -326,6 +343,116 @@
     list-style-type: disc;
   }
 
+  /* LaTeXML lists: keep tag + body aligned on one line */
+  .prose-exercise ol.ltx_enumerate,
+  .prose-exercise ul.ltx_itemize {
+    padding-left: 0;
+    list-style: none;
+  }
+
+  .prose-exercise .ltx_item {
+    display: grid;
+    grid-template-columns: 2.25rem 1fr;
+    column-gap: 0.5rem;
+    row-gap: 0.35rem;
+    align-items: start;
+    margin: 0.35rem 0;
+  }
+
+  .prose-exercise .ltx_item > .ltx_tag_item {
+    display: block;
+    grid-column: 1;
+    min-width: 2.25rem;
+    justify-self: end;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    opacity: 0.9;
+  }
+
+  .prose-exercise .ltx_item > :not(.ltx_tag_item) {
+    grid-column: 2;
+    min-width: 0;
+  }
+
+  .prose-exercise .ltx_item > .ltx_para > p.ltx_p {
+    margin: 0;
+  }
+
+  /* LaTeXML equations: center math, keep numbers on the right */
+  .prose-exercise table.ltx_eqn_table {
+    width: 100%;
+    margin: 1rem 0;
+    border-collapse: collapse;
+  }
+
+  .prose-exercise table.ltx_eqn_table td {
+    padding: 0;
+    vertical-align: middle;
+  }
+
+  .prose-exercise table.ltx_eqn_table td.ltx_eqn_center_padleft,
+  .prose-exercise table.ltx_eqn_table td.ltx_eqn_center_padright {
+    width: 50%;
+  }
+
+  .prose-exercise table.ltx_eqn_table td.ltx_eqn_cell:not(.ltx_align_left):not(.ltx_align_right) {
+    text-align: center;
+  }
+
+  .prose-exercise table.ltx_eqn_table td.ltx_align_left {
+    text-align: left;
+  }
+
+  .prose-exercise table.ltx_eqn_table td.ltx_align_right {
+    text-align: right;
+  }
+
+  .prose-exercise table.ltx_eqn_table td.ltx_eqn_eqno {
+    width: 1%;
+    white-space: nowrap;
+    text-align: right;
+    padding-left: 0.75rem;
+    color: var(--muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Lernziel callouts */
+  .prose-exercise .gm-goal {
+    margin: 1rem 0;
+    padding: 0.9rem 1rem;
+    border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+    border-radius: var(--radius);
+    background: color-mix(in oklch, var(--primary) 10%, transparent);
+    box-shadow: 0 6px 18px -10px color-mix(in oklch, var(--shadow) 35%, transparent);
+  }
+
+  .prose-exercise .gm-goal p {
+    margin: 0;
+    text-align: left;
+  }
+
+  .prose-exercise .gm-goal .ltx_inline-block,
+  .prose-exercise .gm-goal .ltx_minipage {
+    width: auto !important;
+    max-width: 100%;
+  }
+
+  /* Hint / Hinweis callouts */
+  .prose-exercise .gm-hint {
+    margin: 1rem 0;
+    padding: 0.9rem 1rem;
+    border: 1px solid color-mix(in oklch, var(--border) 90%, transparent);
+    border-left: 4px solid color-mix(in oklch, var(--chart-4) 70%, var(--border));
+    border-radius: var(--radius);
+    background: color-mix(in oklch, var(--muted) 55%, transparent);
+    font-size: 0.95em;
+  }
+
+  .prose-exercise .gm-hint p {
+    margin: 0;
+    text-align: left;
+  }
+
   .prose-exercise .gm-missing-asset {
     margin: 0.25rem auto 0;
     padding: 0.75rem;
@@ -371,6 +498,18 @@
 
   .prose-exercise section.footnotes a {
     color: inherit;
+  }
+
+  .prose-exercise section.footnotes ol {
+    list-style-type: decimal;
+    padding-left: 1.25rem;
+    margin-top: 0.75rem;
+    margin-bottom: 0;
+  }
+
+  .prose-exercise section.footnotes ol > li::marker {
+    content: counter(list-item, decimal) ". ";
+    font-variant-numeric: tabular-nums;
   }
 }
 

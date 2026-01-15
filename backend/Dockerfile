@@ -10,7 +10,11 @@ RUN apt-get update \
     gcc \
     libpq-dev \
     default-libmysqlclient-dev \
-    pandoc \
+    latexml \
+    ghostscript \
+    texlive-latex-recommended \
+    texlive-latex-extra \
+    texlive-pictures \
     poppler-utils \
     pkg-config \
     && apt-get clean \

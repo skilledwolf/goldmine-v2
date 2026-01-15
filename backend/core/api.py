@@ -472,8 +472,10 @@ from .auth_api import router as auth_router
 from .files_api import files_router
 from .comments_api import router as comments_router
 from .uploads_api import uploads_router
+from .render_api import render_router
 
 api.add_router("/auth", auth_router)
 api.add_router("/files", files_router)
 api.add_router("/comments", comments_router)
 api.add_router("/uploads", uploads_router)
+api.add_router("/render", render_router)

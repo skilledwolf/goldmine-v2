@@ -1,6 +1,7 @@
 import hashlib
-import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from django.conf import settings
@@ -16,11 +17,14 @@ import re
 MARKER_TOKEN = "GMEXMARKER-"
 MARKER_RE = re.compile(rf"{MARKER_TOKEN}(\d+)")
 
+# Bump this when changing the render backend/options so cached HTML is regenerated.
+RENDER_PIPELINE_ID = "latexml-html5-fragment-v6"
+
 
 def _replace_markers_with_comments(html: str) -> str:
     # Remove full marker-only paragraphs to avoid extra vertical space in previews.
     html = re.sub(
-        rf"<p>\s*{MARKER_TOKEN}(\d+)\s*</p>",
+        rf"<p\b[^>]*>\s*{MARKER_TOKEN}(\d+)\s*</p>",
         lambda m: f"<!--GMEX:{m.group(1)}-->",
         html,
         flags=re.IGNORECASE,
@@ -157,7 +161,7 @@ def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None =
 
     out: list[str] = []
     for line in text.splitlines(keepends=True):
-        # Drop TeX's file terminator so pandoc doesn't stop mid-document when we inline.
+        # Drop TeX's file terminator so downstream converters don't stop mid-document when we inline.
         if line.strip().lower() == r"\endinput":
             continue
         m = re.match(r"\s*\\(input|include)\{([^}]+)\}", line)
@@ -170,97 +174,157 @@ def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None =
     return "".join(out)
 
 
-def _restore_eqrefs_to_mathjax(html: str) -> str:
+def _resolve_tex_package_path(ref: str, base_dir: Path, semester_root: Path) -> Path | None:
+    cleaned = (ref or "").strip().strip("{}")
+    if not cleaned:
+        return None
+
+    # Handle comma-separated lists defensively (though our use cases are usually single).
+    first = cleaned.split(",")[0].strip()
+    if not first:
+        return None
+
+    candidates: list[Path] = []
+    raw = base_dir / first
+    candidates.append(raw)
+    candidates.append(semester_root / first)
+
+    for cand in list(candidates):
+        if cand.suffix:
+            continue
+        candidates.append(cand.with_suffix(".sty"))
+
+    for cand in candidates:
+        try:
+            resolved = cand.resolve()
+        except OSError:
+            continue
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _render_tex_to_html(
+    raw_tex: str,
+    base_dir: Path,
+    semester_root: Path,
+    asset_out_dir: Path | None = None,
+) -> tuple[int, str, str]:
     """
-    Pandoc expands \\eqref{label} into anchors such as
-    <a data-reference-type="eqref" data-reference="eq:foo">[…]</a>.
-    MathJax never sees the macro then, so numbers stay as raw text.
+    Convert TeX to an HTML5 fragment using LaTeXML.
 
-    We only rewrite anchors that clearly target equations:
-      - data-reference-type="eqref", or
-      - data-reference starts with "eq:" (Pandoc sometimes emits type="ref")
-
-    Other cross-refs (to sections/items like \ref{1c}) are left untouched to
-    avoid MathJax inserting “???” when the label is not a math label.
+    Returns (returncode, html, log).
     """
-    # Only labels that appear inside TeX math (e.g. `\[\label{eq:foo} ...\]`)
-    # are visible to MathJax' TeX input processor.
-    math_labels = set(re.findall(r'\\label\{([^}]+)\}', html))
+    with tempfile.TemporaryDirectory(prefix="goldmine-latexml-") as tmpdir:
+        tmp = Path(tmpdir)
+        input_path = tmp / "input.tex"
+        output_path = tmp / "output.html"
+        log_path = tmp / "latexmlc.log"
+        babel_stub_path = tmp / "babel.sty"
+        fixmath_stub_path = tmp / "fixmath.sty"
+        input_path.write_text(raw_tex, encoding="utf-8", errors="ignore")
 
-    pattern = re.compile(
-        r'<a\s+[^>]*data-reference-type="(?P<type>eqref|ref)"[^>]*data-reference="(?P<label>[^"]+)"[^>]*>[^<]*</a>',
-        re.IGNORECASE,
-    )
+        # LaTeXML's interaction with the TeXlive babel package can be brittle and has
+        # caused widespread failures across the corpus. For HTML previews we don't need
+        # localized strings/hyphenation, so we shadow `babel.sty` with a minimal stub.
+        babel_stub_path.write_text(
+            r"""
+% Minimal babel stub for LaTeXML HTML preview.
+\ProvidesPackage{babel}[9999/01/01 babel stub]
+\newcommand{\selectlanguage}[1]{}
+\newcommand{\foreignlanguage}[2]{#2}
+\def\languagename{english}
+\providecommand{\bibname}{Bibliography}
+\providecommand{\prefacename}{Preface}
+\providecommand{\enclname}{Encl.}
+\providecommand{\ccname}{cc}
+\providecommand{\headtoname}{To}
+\endinput
+""".lstrip(),
+            encoding="utf-8",
+        )
 
-    added_labels: set[str] = set()
+        # Several legacy sources depend on fixmath, which may not be present in minimal
+        # TeXlive installs. For previews we only need it to exist, not to perfectly match
+        # TeX output, so we provide a tiny stub.
+        fixmath_stub_path.write_text(
+            r"""
+% Minimal fixmath stub for LaTeXML HTML preview.
+\ProvidesPackage{fixmath}[9999/01/01 fixmath stub]
+\providecommand{\mathbold}[1]{\mathbf{#1}}
+\endinput
+""".lstrip(),
+            encoding="utf-8",
+        )
 
-    def repl(match: re.Match) -> str:
-        ref_type = match.group('type').lower()
-        label = match.group('label')
-        is_equation = ref_type == 'eqref' or label.startswith('eq:')
-        if not is_equation:
-            return match.group(0)
-        needs_stub = label not in math_labels and label not in added_labels
-        if needs_stub:
-            added_labels.add(label)
-            # Insert a hidden display math with the missing label so MathJax
-            # registers it and numbering/refs resolve, without altering layout.
-            hidden = f'<span style="display:none">\\[\\label{{{label}}}\\]</span>'
-        else:
-            hidden = ""
-        return f'{hidden}<span class="math inline">\\(\\eqref{{{label}}}\\)</span>'
+        cmd = [
+            "latexmlc",
+            "--preload=LaTeX.pool",
+            "--format=html5",
+            "--whatsout=fragment",
+            "--includestyles",
+            "--base",
+            str(base_dir),
+            "--log",
+            str(log_path),
+            "--destination",
+            str(output_path),
+            "--path",
+            str(tmp),
+            "--path",
+            str(base_dir),
+            "--path",
+            str(semester_root),
+            str(input_path),
+        ]
 
-    return pattern.sub(repl, html)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        log_parts = []
+        if log_path.exists():
+            try:
+                log_parts.append(log_path.read_text(encoding="utf-8"))
+            except UnicodeDecodeError:
+                log_parts.append(log_path.read_text(encoding="latin-1"))
+        if result.stderr:
+            log_parts.append(result.stderr)
+        if result.stdout:
+            log_parts.append(result.stdout)
+        log = "\n".join(part.strip() for part in log_parts if part and part.strip()).strip()
 
-def _normalize_pandoc_math_envs_for_mathjax(html: str) -> str:
-    """
-    The pandoc version we ship in Docker may emit `aligned` environments for display math.
+        html = ""
+        if output_path.exists():
+            try:
+                html = output_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                html = output_path.read_text(encoding="latin-1")
 
-    MathJax does not register `\\label{...}` inside `aligned`, so `\\eqref{...}` resolves to ???.
-    Converting `aligned` -> `align` preserves the visual layout while enabling labels/refs.
-    """
-    return html.replace(r"\begin{aligned}", r"\begin{align}").replace(r"\end{aligned}", r"\end{align}")
+        if asset_out_dir and result.returncode == 0 and html.strip():
+            asset_out_dir.mkdir(parents=True, exist_ok=True)
+            for child in list(asset_out_dir.rglob("*")):
+                if child.is_file():
+                    try:
+                        child.unlink()
+                    except OSError:
+                        pass
 
-def _normalize_math_macros_for_mathjax(html: str) -> str:
-    """
-    Normalize a few legacy LaTeX constructs that pandoc keeps inside math spans,
-    but that MathJax does not understand well.
+            keep_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf"}
+            for src in tmp.rglob("*"):
+                if not src.is_file():
+                    continue
+                if src.suffix.lower() not in keep_exts:
+                    continue
+                try:
+                    rel = src.relative_to(tmp)
+                except ValueError:
+                    continue
+                dest = asset_out_dir / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.copy2(src, dest)
+                except OSError:
+                    continue
 
-    - `youngtab` macros: replace `\\yng(` / `\\young(` with a MathJax-friendly
-      text representation to avoid TeX parser errors.
-    - `tabular` inside math: convert to `array` and drop nested `$...$` markers.
-      (Some sources embed tabular blocks inside `align*` just for centering.)
-    """
-
-    # youngtab: MathJax doesn't implement these macros; render a readable fallback.
-    html = html.replace(r"\yng(", r"\mathrm{yng}(").replace(r"\young(", r"\mathrm{young}(")
-
-    # Convert tabular to array when it appears inside math (common in some solutions).
-    html = html.replace(r"\begin{tabular}", r"\begin{array}").replace(r"\end{tabular}", r"\end{array}")
-
-    # Some sources put a tabular inside an `align*` block (already in display math) and
-    # then still wrap each cell in `$...$`. After converting to `array`, those dollar signs
-    # become invalid nested math markers. Remove them.
-    def _strip_dollars_in_array(match: re.Match) -> str:
-        array_block = match.group(0)
-        return array_block.replace("$", "")
-
-    html = re.sub(
-        r"\\begin\{array\}\{[^}]+\}[\s\S]*?\\end\{array\}",
-        _strip_dollars_in_array,
-        html,
-        flags=re.MULTILINE,
-    )
-
-    # If an align environment wraps nothing but a single array, drop the outer align.
-    html = re.sub(
-        r"\\begin\{align\*?\}\s*(\\begin\{array\}\{[^}]+\}[\s\S]*?\\end\{array\})\s*\\end\{align\*?\}",
-        r"\1",
-        html,
-        flags=re.MULTILINE,
-    )
-
-    return html
+        return result.returncode, html, log
 
 
 def _update_exercise_search_texts(series: Series, html_content: str, stdout=None) -> None:
@@ -288,8 +352,8 @@ def _move_trailing_math_labels_inside_env(tex: str) -> str:
     """
     Some legacy sources place `\\label{...}` immediately *after* a math environment end,
     e.g. `\\end{align}\\label{eq:foo}`. LaTeX still associates this with the preceding
-    equation number, but pandoc tends to drop such labels (since they appear outside
-    the math block), which breaks \\ref/\\eqref in the HTML preview.
+    equation number, but some HTML renderers treat this as an out-of-math label, which can
+    break \\ref/\\eqref in previews.
     """
     envs = r"(?:equation|align|gather|multline|alignat|eqnarray|flalign)"
     pattern = re.compile(
@@ -300,7 +364,7 @@ def _move_trailing_math_labels_inside_env(tex: str) -> str:
 
 def _unwrap_single_brace_command(tex: str, command: str) -> str:
     """
-    Pandoc drops many unknown commands *and their contents*, e.g. `\\hint{...}`.
+    Some renderers treat unknown commands as fatal errors, or drop their contents.
     For the HTML preview we prefer to keep the contents (including any math).
     """
     needle = f"\\{command}"
@@ -477,9 +541,9 @@ def _rewrite_two_arg_command(tex: str, command: str, template: str) -> str:
 
 def _wrap_solution_environments(tex: str, show: bool) -> str:
     """
-    Pandoc drops unknown environments (like `solution` / `loesung`) along with their
-    contents. When solutions should be shown, map them to a simple block Pandoc
-    understands; otherwise strip them entirely.
+    Some sources use custom environments (like `solution` / `loesung`). When solutions
+    should be shown, map them to a simple block the HTML renderer understands;
+    otherwise strip them entirely.
     """
     for env in ["solution", "loesung"]:
         if show:
@@ -507,7 +571,7 @@ def _wrap_solution_environments(tex: str, show: bool) -> str:
 
 def _preserve_item_labels(tex: str) -> str:
     """
-    Pandoc ignores optional labels on \\item, so constructs like
+    Some renderers ignore optional labels on \\item, so constructs like
       \\item[(a)] Foo
     lose their label in HTML. Expand the label into the item body instead.
     """
@@ -518,6 +582,28 @@ def _preserve_item_labels(tex: str) -> str:
         return f"\\item \\textbf{{{label}}} "
 
     return re.sub(r"\\item\\[(.*?)\\]", repl, tex)
+
+
+def _rewrite_exenumerate(tex: str) -> str:
+    """
+    ethuebung's exenumerate is implemented via enumitem and uses label macros like \\alph*
+    which LaTeXML doesn't expand reliably. For HTML previews, map it to a plain
+    enumerate with simple label definitions.
+    """
+    begin = re.compile(r"\\begin\{exenumerate\}(?:\[[^\]]*\])?", re.IGNORECASE)
+    end = re.compile(r"\\end\{exenumerate\}", re.IGNORECASE)
+
+    begin_repl = r"""\begin{enumerate}
+\renewcommand{\labelenumi}{(\alph{enumi})}
+\renewcommand{\labelenumii}{(\roman{enumii})}
+\renewcommand{\labelenumiii}{(\arabic{enumiii})}
+"""
+
+    tex = begin.sub(lambda _m: begin_repl, tex)
+    tex = end.sub(lambda _m: r"\end{enumerate}", tex)
+    # ethuebung uses `\item*` for optional/bonus items; translate to an explicit label.
+    tex = re.sub(r"\\item\*", lambda _m: r"\item[(*)]", tex)
+    return tex
 
 
 def _strip_tex_comments(tex: str) -> str:
@@ -566,7 +652,7 @@ def _tex_has_solution_env(tex: str) -> bool:
 
 
 class Command(BaseCommand):
-    help = "Render series TeX to HTML and cache it on the Series model. Uses pandoc+MathJax for a light, dependency-free baseline."
+    help = "Render series TeX to HTML and cache it on the Series model. Uses LaTeXML for richer LaTeX support."
 
     def add_arguments(self, parser):
         parser.add_argument('--series-id', type=int, help='Render a single series by id')
@@ -605,10 +691,14 @@ class Command(BaseCommand):
         if not tex_abs.exists():
             raise CommandError(f"TeX file not found: {tex_abs}")
 
-        # Inline \\input / \\include so wrapper files still produce content.
-        full_tex = _inline_inputs(tex_abs, (Path(settings.LECTURE_MEDIA_ROOT) / fs_path))
+        semester_root = Path(settings.LECTURE_MEDIA_ROOT) / fs_path
 
-        checksum = hashlib.sha256(full_tex.encode("utf-8", errors="ignore")).hexdigest()
+        # Inline \\input / \\include so wrapper files still produce content.
+        full_tex = _inline_inputs(tex_abs, semester_root)
+
+        checksum = hashlib.sha256(
+            (RENDER_PIPELINE_ID + "\n" + full_tex).encode("utf-8", errors="ignore")
+        ).hexdigest()
         if not force and series.tex_checksum == checksum and series.render_status == Series.RenderStatus.OK:
             _update_exercise_search_texts(series, series.html_content, stdout=self.stdout)
             self.stdout.write(f"Series {series.id}: up-to-date, skipping")
@@ -617,31 +707,194 @@ class Command(BaseCommand):
         # Read TeX; if it is a fragment (no \\begin{document}), wrap in a minimal doc
         raw_tex = full_tex
 
+        # LaTeXML's babel bindings do not support all legacy language options used by
+        # ethuebung sheets (e.g. "german"), and this can cascade into fatal parse errors.
+        # For HTML previews we don't need localized header strings, so strip the directive.
+        raw_tex = re.sub(r"^\s*\\UebungLanguage\{[^}]*\}\s*$", "", raw_tex, flags=re.MULTILINE)
+
+        # LaTeXML currently struggles with some LaTeX3-based packages (notably siunitx),
+        # which can cause hard failures deep inside expl3. For previews, strip it and
+        # rely on lightweight stubs (injected below) when its commands appear.
+        raw_tex = re.sub(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{siunitx\}\s*(?:%[^\n]*)?$",
+            "",
+            raw_tex,
+            flags=re.MULTILINE,
+        )
+
+        # LaTeXML's binding for SIunits delegates to siunitx (expl3-based), which can
+        # lead to the same fatal expl3 parsing issues. For previews, strip SIunits too.
+        raw_tex = re.sub(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{SIunits\}\s*(?:%[^\n]*)?$",
+            "",
+            raw_tex,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+
+        # mhchem (especially newer releases) may rely on LaTeX3; moreover, it is not
+        # guaranteed to exist in minimal TeXlive installs. For previews, strip it and
+        # provide a lightweight `\\ce` stub.
+        raw_tex = re.sub(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{mhchem\}\s*(?:%[^\n]*)?$",
+            "",
+            raw_tex,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+
+        # The tensor package is not always available in minimal installs and its macros
+        # can trigger LaTeXML parse errors when undefined. Strip it and rely on stubs.
+        raw_tex = re.sub(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{tensor\}\s*(?:%[^\n]*)?$",
+            "",
+            raw_tex,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+
+        # Some older archives reference a local checkout of ethuebung (e.g. ../ethuebung)
+        # but don't ship the style file. If it's missing, drop the package and inject
+        # lightweight stubs so the preview still renders.
+        missing_ethuebung = False
+        for match in re.finditer(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{([^}]*ethuebung[^}]*)\}\s*(?:%[^\n]*)?$",
+            raw_tex,
+            flags=re.MULTILINE | re.IGNORECASE,
+        ):
+            pkg_ref = match.group(1)
+            if _resolve_tex_package_path(pkg_ref, tex_abs.parent, semester_root) is None:
+                missing_ethuebung = True
+                break
+
+        if missing_ethuebung:
+            raw_tex = re.sub(
+                r"^\s*\\usepackage(?:\[[^\]]*\])?\{[^}]*ethuebung[^}]*\}\s*(?:%[^\n]*)?$",
+                "",
+                raw_tex,
+                flags=re.MULTILINE | re.IGNORECASE,
+            )
+            ethuebung_compat = r"""
+% goldmine html render compat: missing ethuebung
+\usepackage{amsmath,amssymb,graphicx}
+\usepackage{enumitem}
+\providecommand{\url}[1]{#1}
+\providecommand{\href}[2]{#2}
+\providecommand{\UebungLanguage}[1]{}
+\providecommand{\UebungLecture}[1]{}
+\providecommand{\UebungProf}[1]{}
+\providecommand{\UebungLecturer}[1]{}
+\providecommand{\UebungSemester}[1]{}
+\providecommand{\UebungsblattTitleSeries}[1]{}
+\providecommand{\UebungsblattTitleSolutions}[1]{}
+\providecommand{\UebungsblattNumber}[1]{}
+\providecommand{\UebungStyle}[1]{}
+\providecommand{\UebungLabel}[1]{}
+\providecommand{\MakeUebungHeader}{}
+\newif\ifmusterloesung
+\newif\ifuebungsblatt
+\musterloesungtrue
+""".strip()
+            raw_tex = re.sub(
+                r"(\\documentclass(?:\[[^\]]*\])?\{[^}]+\})",
+                lambda m: f"{m.group(1)}\n{ethuebung_compat}\n",
+                raw_tex,
+                count=1,
+            )
+
+        # mpostinl embeds MetaPost source via the `mpostcmd` environment, which LaTeXML
+        # tends to treat as verbatim and then fails validation when TeX markup appears
+        # later in the file. For previews, drop these blocks and the package entirely.
+        raw_tex = re.sub(
+            r"^\s*\\usepackage(?:\[[^\]]*\])?\{mpostinl\}\s*$",
+            "",
+            raw_tex,
+            flags=re.MULTILINE | re.IGNORECASE,
+        )
+        raw_tex = re.sub(
+            r"\\begin\{mpostcmd\}[\s\S]*?\\end\{mpostcmd\}",
+            "",
+            raw_tex,
+            flags=re.IGNORECASE,
+        )
+
+        # Some series use a custom `problems` document class that is not shipped with the
+        # archive. For HTML previews, fall back to `article` and stub the key environments.
+        if re.search(r"\\documentclass(?:\[[^\]]*\])?\{problems\}", raw_tex):
+            raw_tex = re.sub(
+                r"^\s*\\PassOptionsToClass\{[^}]*\}\{problems\}\s*$",
+                "",
+                raw_tex,
+                flags=re.MULTILINE,
+            )
+            raw_tex = re.sub(
+                r"\\documentclass(?:\[[^\]]*\])?\{problems\}",
+                r"\\documentclass{article}",
+                raw_tex,
+                count=1,
+            )
+            problems_compat = r"""
+% goldmine html render compat: problems.cls
+\usepackage{amsmath,amssymb}
+\newcounter{sheet}
+\newcommand{\turnover}{\par\medskip}
+\newenvironment{problem}[1]{\section*{#1}}{\par}
+\newenvironment{subproblem}[1][]{\par\medskip\noindent\textbf{#1}\par}{\par}
+""".strip()
+            raw_tex = re.sub(
+                r"(\\documentclass(?:\[[^\]]*\])?\{article\})",
+                lambda m: f"{m.group(1)}\n{problems_compat}\n",
+                raw_tex,
+                count=1,
+            )
+
+        # KOMA-Script classes (scrartcl, ...) now rely on LaTeX3/expl3 internals that
+        # LaTeXML cannot reliably digest. For previews, fall back to the base classes.
+        def _swap_documentclass(tex: str, old: str, new: str) -> str:
+            pattern = re.compile(
+                r"\\documentclass(?P<opts>\[.*?\])?\{" + re.escape(old) + r"\}",
+                re.IGNORECASE,
+            )
+            m = pattern.search(tex)
+            if not m:
+                return tex
+            opts = m.group("opts") or ""
+            replacement = f"\\documentclass{opts}{{{new}}}"
+            return tex[: m.start()] + replacement + tex[m.end() :]
+
+        raw_tex = _swap_documentclass(raw_tex, "scrartcl", "article")
+        raw_tex = _swap_documentclass(raw_tex, "scrreprt", "report")
+        raw_tex = _swap_documentclass(raw_tex, "scrbook", "book")
+
         raw_tex, marker_count = _inject_exercise_markers(raw_tex, series.exercises.count())
         if marker_count:
             self.stdout.write(f"Series {series.id}: inserted {marker_count} exercise markers")
 
         # Compatibility transforms for common Gold Mine LaTeX macros/environments.
-        # Pandoc does not load .sty files, so these commands would otherwise be ignored and
-        # exercise titles would disappear from the HTML.
+        raw_tex = _move_trailing_math_labels_inside_env(raw_tex)
+        scan_tex = _strip_tex_comments(raw_tex)
+        uses_ethuebung = _tex_uses_ethuebung(scan_tex)
+        show_solutions = _tex_uses_ethuebung_solutions(scan_tex)
+
         compat_prefix = r"""
 % goldmine html render compat
+\providecommand{\hint}[1]{\textit{Hint: #1}}
+\providecommand{\hints}[1]{\textit{Hints: #1}}
+\providecommand{\hinweis}[1]{\textit{Hinweis: #1}}
+\providecommand{\hinweise}[1]{\textit{Hinweise: #1}}
+\providecommand{\SI}[3][]{#2\,#3}
+\providecommand{\si}[2][]{#2}
+\providecommand{\num}[2][]{#2}
+\providecommand{\qty}[3][]{#2\,#3}
+\providecommand{\sisetup}[1]{}
+\providecommand{\DeclareSIUnit}[2]{}
+\providecommand{\unit}[1]{\ensuremath{#1}}
+\providecommand{\ce}[1]{\ensuremath{#1}}
+\providecommand{\ch}[1]{\ensuremath{#1}}
+\providecommand{\indices}[1]{}
+\providecommand{\tensor}[2]{#1}
 \providecommand{\uebung}[1]{\subsection*{#1}}
 \providecommand{\exercise}[1]{\subsection*{#1}}
 \providecommand{\subuebung}[1]{\subsubsection*{#1}}
 \providecommand{\subexercise}[1]{\subsubsection*{#1}}
-"""
-        raw_tex = compat_prefix + "\n" + raw_tex
-        # Pandoc drops equation labels inside unsupported environments like subequations.
-        # Flatten subequations so labels survive and MathJax can resolve \eqref.
-        raw_tex = raw_tex.replace("\\begin{subequations}", "").replace("\\end{subequations}", "")
-        raw_tex = _unwrap_single_brace_command(raw_tex, "hint")
-        raw_tex = _move_trailing_math_labels_inside_env(raw_tex)
-        raw_tex = raw_tex.replace("\\begin{exenumerate}", "\\begin{enumerate}")
-        raw_tex = raw_tex.replace("\\end{exenumerate}", "\\end{enumerate}")
-        scan_tex = _strip_tex_comments(raw_tex)
-        uses_ethuebung = _tex_uses_ethuebung(scan_tex)
-        show_solutions = _tex_uses_ethuebung_solutions(scan_tex)
+""".strip()
         if _tex_has_solution_env(scan_tex):
             show_solutions = True
         elif not uses_ethuebung:
@@ -650,7 +903,7 @@ class Command(BaseCommand):
         raw_tex = _rewrite_solution_commands(raw_tex, show_solutions)
         raw_tex = _wrap_solution_environments(raw_tex, show_solutions)
         raw_tex = _rewrite_two_arg_command(raw_tex, "uebung", r"\subsection*{{{arg1}. {arg2}}}")
-        raw_tex = _preserve_item_labels(raw_tex)
+        raw_tex = _rewrite_exenumerate(raw_tex)
         needs_wrap = "\\begin{document}" not in raw_tex
         if needs_wrap:
             preamble = r"""\documentclass{article}
@@ -660,16 +913,22 @@ class Command(BaseCommand):
 """
             raw_tex = preamble + raw_tex + "\n\\end{document}\n"
 
-        # Use pandoc to HTML with MathJax (lightweight dependency footprint)
-        cmd = [
-            'pandoc',
-            '-f', 'latex',
-            '-t', 'html',
-            '--mathjax',
-        ]
+        begin_doc = raw_tex.find("\\begin{document}")
+        if begin_doc != -1:
+            raw_tex = raw_tex[:begin_doc] + compat_prefix + "\n" + raw_tex[begin_doc:]
+        else:
+            raw_tex = compat_prefix + "\n" + raw_tex
 
-        result = subprocess.run(cmd, input=raw_tex, capture_output=True, text=True)
-        if result.returncode != 0:
+        asset_out_dir = Path(settings.MEDIA_ROOT) / "latexml-assets" / str(series.id)
+
+        # Use LaTeXML to produce an HTML5 fragment (better LaTeX package/macro support).
+        rc, html, log = _render_tex_to_html(
+            raw_tex,
+            base_dir=tex_abs.parent,
+            semester_root=semester_root,
+            asset_out_dir=asset_out_dir,
+        )
+        if rc != 0 or not (html or "").strip():
             # Fallback: store escaped TeX so the UI can show something instead of nothing
             fallback_tex = _strip_marker_tokens(raw_tex)
             escaped = (
@@ -680,7 +939,10 @@ class Command(BaseCommand):
             series.html_content = f"<pre>{escaped}</pre>"
             # Mark as failed so the frontend can prefer a PDF-based preview.
             series.render_status = Series.RenderStatus.FAILED
-            series.render_log = f"Pandoc failed, showing raw TeX fallback: {result.stderr.strip()[:2000]}"
+            snippet = (log or "").strip()
+            if snippet:
+                snippet = snippet[-2000:]
+            series.render_log = f"LaTeXML failed, showing raw TeX fallback: {snippet}"
             series.html_rendered_at = timezone.now()
             series.tex_checksum = checksum
             series.save(update_fields=[
@@ -690,14 +952,11 @@ class Command(BaseCommand):
             self.stderr.write(self.style.WARNING(f"Series {series.id}: {series.render_log}"))  # log but continue
             return True
 
-        html_content = _restore_eqrefs_to_mathjax(result.stdout)
-        html_content = _normalize_pandoc_math_envs_for_mathjax(html_content)
-        html_content = _normalize_math_macros_for_mathjax(html_content)
-        html_content = _replace_markers_with_comments(html_content)
+        html_content = _replace_markers_with_comments(html)
         series.html_content = html_content
         series.html_rendered_at = timezone.now()
         series.render_status = Series.RenderStatus.OK
-        series.render_log = result.stderr[-1000:]
+        series.render_log = (log or "")[-1000:]
         series.tex_checksum = checksum
         series.save(update_fields=[
             'html_content', 'html_rendered_at', 'render_status', 'render_log', 'tex_checksum'

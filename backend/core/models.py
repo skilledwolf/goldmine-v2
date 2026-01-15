@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth import get_user_model
+from django.contrib.postgres.indexes import GinIndex
 from django.utils.translation import gettext_lazy as _
 
 User = get_user_model()
@@ -99,6 +100,13 @@ class Exercise(models.Model):
     
     class Meta:
         ordering = ['number']
+        indexes = [
+            GinIndex(
+                fields=["search_text"],
+                name="exercise_search_text_trgm",
+                opclasses=["gin_trgm_ops"],
+            ),
+        ]
 
     def __str__(self):
         return f"{self.series} - Ex {self.number}: {self.title}"
@@ -151,3 +159,43 @@ class UploadJob(models.Model):
 
     def __str__(self):
         return f"UploadJob #{self.id} ({self.lecture.name} {self.semester}{self.year})"
+
+
+class RenderJob(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        SUCCEEDED = "succeeded", "Succeeded"
+        FAILED = "failed", "Failed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    class Scope(models.TextChoices):
+        ALL = "all", "All series"
+        SERIES = "series", "Specific series"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
+
+    scope = models.CharField(max_length=20, choices=Scope.choices, default=Scope.ALL)
+    series_ids = models.JSONField(blank=True, null=True)
+    force = models.BooleanField(default=False)
+
+    total_count = models.IntegerField(default=0)
+    processed_count = models.IntegerField(default=0)
+    rendered_count = models.IntegerField(default=0)
+    skipped_count = models.IntegerField(default=0)
+    failed_count = models.IntegerField(default=0)
+    current_series_id = models.IntegerField(null=True, blank=True)
+
+    pid = models.IntegerField(null=True, blank=True)
+    return_code = models.IntegerField(null=True, blank=True)
+    error_message = models.TextField(blank=True, default="")
+    output_log = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"RenderJob #{self.id} ({self.status})"
