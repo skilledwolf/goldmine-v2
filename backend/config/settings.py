@@ -40,6 +40,13 @@ def env_list(name: str, default: list[str] | None = None) -> list[str]:
     return [item.strip() for item in value.split(',') if item.strip()]
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 ALLOWED_HOSTS = env_list(
     "ALLOWED_HOSTS",
     ["localhost", "127.0.0.1", "0.0.0.0", "backend"],
@@ -61,6 +68,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'allauth',
     'allauth.account',
+    'django_rq',
     
     # Local
     'core',
@@ -123,6 +131,16 @@ DATABASES = {
     }
 }
 
+# Background job queue (Redis)
+RQ_QUEUES = {
+    "default": {
+        "HOST": os.getenv("REDIS_HOST", "redis"),
+        "PORT": int(os.getenv("REDIS_PORT", "6379")),
+        "DB": int(os.getenv("REDIS_DB", "0")),
+        "DEFAULT_TIMEOUT": int(os.getenv("REDIS_DEFAULT_TIMEOUT", "600")),
+    }
+}
+
 # CORS & CSRF
 CORS_ALLOWED_ORIGINS = env_list(
     "CORS_ALLOWED_ORIGINS",
@@ -173,10 +191,15 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.0/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = os.getenv("STATIC_ROOT", os.path.join(BASE_DIR, "staticfiles"))
 
 MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_ROOT = os.getenv("MEDIA_ROOT", os.path.join(BASE_DIR, "media"))
 LECTURE_MEDIA_ROOT = os.path.join(MEDIA_ROOT, 'lectures')
+
+# Upload limits (bytes)
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(25 * 1024 * 1024)))
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(25 * 1024 * 1024)))
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
@@ -185,3 +208,20 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Disable implicit slash-redirects that break POST/JSON API clients
 APPEND_SLASH = False
+
+# Security settings (tune via env in production)
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=not DEBUG)
+SECURE_PROXY_SSL_HEADER = (
+    ("HTTP_X_FORWARDED_PROTO", "https") if env_bool("DJANGO_BEHIND_PROXY", default=False) else None
+)
+USE_X_FORWARDED_HOST = env_bool("DJANGO_USE_X_FORWARDED_HOST", default=False)
+
+SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = env_bool("SECURE_HSTS_PRELOAD", default=False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "same-origin")
+X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "DENY")
+
+SESSION_COOKIE_SAMESITE = os.getenv("SESSION_COOKIE_SAMESITE", "Lax")
+CSRF_COOKIE_SAMESITE = os.getenv("CSRF_COOKIE_SAMESITE", "Lax")

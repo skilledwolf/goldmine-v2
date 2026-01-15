@@ -1,4 +1,6 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const DEFAULT_API_BASE =
+    process.env.NODE_ENV === "production" ? "/api" : "http://localhost:8000/api";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_BASE;
 
 export function getApiBase() {
     return BASE_URL;

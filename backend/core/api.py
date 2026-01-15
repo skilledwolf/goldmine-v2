@@ -29,6 +29,10 @@ def require_staff(request):
 
 api = NinjaAPI(title="Gold Mine API", version="2.0.0", auth=django_auth)
 
+@api.get("/health", auth=None)
+def health(request):
+    return {"status": "ok"}
+
 class ExerciseSchema(Schema):
     id: int
     number: int

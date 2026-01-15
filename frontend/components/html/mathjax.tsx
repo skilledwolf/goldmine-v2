@@ -3,8 +3,15 @@
 
 import { useEffect, useRef } from 'react';
 import { getApiBase } from '@/lib/api';
+import DOMPurify from 'dompurify';
 
-const MATHJAX_URL = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+const MATHJAX_URL =
+  process.env.NEXT_PUBLIC_MATHJAX_URL || 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js';
+
+const SANITIZE_CONFIG = {
+  USE_PROFILES: { html: true, svg: true, mathMl: true },
+  ADD_ATTR: ['target', 'rel'],
+};
 
 type Props = {
   html: string;
@@ -383,7 +390,8 @@ export function MathJaxHTML({ html, className, seriesIdForAssets, style, resetCo
         if (!node) return;
 
         // Important: let MathJax own this subtree. Avoid React clobbering MathJax DOM mutations.
-        node.innerHTML = html;
+        const sanitized = DOMPurify.sanitize(html, SANITIZE_CONFIG);
+        node.innerHTML = sanitized;
 
         const apiBase = getApiBase();
 

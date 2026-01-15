@@ -17,6 +17,8 @@ files_router = Router()
 
 PDF_PREVIEW_CACHE_DIR = Path("/tmp/goldmine_pdf_previews")
 RENDERED_ASSET_ROOT = Path(settings.MEDIA_ROOT) / "latexml-assets"
+PDF_TO_PNG_TIMEOUT = int(os.getenv("PDF_TO_PNG_TIMEOUT_SECONDS", "20"))
+PDF_INFO_TIMEOUT = int(os.getenv("PDF_INFO_TIMEOUT_SECONDS", "10"))
 
 
 def _safe_file_response(file_path: Path) -> FileResponse:
@@ -236,9 +238,11 @@ def _pdf_to_png(pdf_path: Path, page: int = 1) -> Path:
         str(out_base),
     ]
     try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=PDF_TO_PNG_TIMEOUT)
     except FileNotFoundError as exc:
         raise Http404("PDF preview unavailable (missing pdftocairo)") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise Http404("PDF conversion timed out") from exc
     except subprocess.CalledProcessError as exc:
         raise Http404(f"PDF conversion failed: {(exc.stderr or '').strip()[:200]}") from exc
     if not out_png.exists():
@@ -249,9 +253,11 @@ def _pdf_to_png(pdf_path: Path, page: int = 1) -> Path:
 def _pdf_page_count(pdf_path: Path) -> int:
     cmd = ["pdfinfo", str(pdf_path)]
     try:
-        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=PDF_INFO_TIMEOUT)
     except FileNotFoundError as exc:
         raise Http404("PDF metadata unavailable (missing pdfinfo)") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise Http404("PDF metadata unavailable (timeout)") from exc
     except subprocess.CalledProcessError as exc:
         raise Http404(f"PDF metadata unavailable: {(exc.stderr or '').strip()[:200]}") from exc
 
@@ -408,14 +414,16 @@ def get_file(request, series_id: int, file_type: str):
     if not fs_path:
         raise Http404("File path configuration error")
 
-    file_path = os.path.join(settings.LECTURE_MEDIA_ROOT, fs_path, filename)
+    root = Path(settings.LECTURE_MEDIA_ROOT)
+    try:
+        file_path = _ensure_under_root(root / fs_path / filename, root)
+    except Http404:
+        raise
 
-    if not os.path.exists(file_path):
+    if not file_path.is_file():
         raise Http404("File not found on server")
 
-    # Stream file; FileResponse accepts a file-like object
-    file_handle = open(file_path, "rb")
-    return FileResponse(file_handle, as_attachment=True, filename=filename)
+    return FileResponse(open(file_path, "rb"), as_attachment=True, filename=filename)
 
 
 def _ensure_under_root(path: Path, root: Path) -> Path:

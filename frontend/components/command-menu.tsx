@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Command } from "cmdk";
+import * as Dialog from "@radix-ui/react-dialog";
 import {
     User,
     Search,
@@ -91,6 +92,7 @@ export function CommandMenu() {
             shouldFilter={false}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] max-w-lg rounded-xl border border-border/40 bg-popover/80 backdrop-blur-xl shadow-2xl overflow-hidden z-[50] animate-in fade-in zoom-in-95 duration-200"
         >
+            <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
             <div className="flex items-center border-b px-3 h-14">
                 <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                 <Command.Input

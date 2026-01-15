@@ -90,11 +90,13 @@ function SeriesPreviewTabs({
   currentUser,
   exerciseHtmlMap = {},
   renderCommentsForExercise,
+  targetExerciseId,
 }: {
   series: Series;
   currentUser: { id: number; username: string; is_staff?: boolean } | null;
   exerciseHtmlMap?: Record<number, string>;
   renderCommentsForExercise?: (ex: Exercise, context?: 'list' | 'preview') => React.ReactNode;
+  targetExerciseId?: number | null;
 }) {
   const isStaff = !!currentUser?.is_staff;
   const { pushToast } = useToast();
@@ -115,6 +117,7 @@ function SeriesPreviewTabs({
     if (hasSolution) return 'solution';
     return 'tex';
   });
+  const lastScrolledRef = useRef<number | null>(null);
 
   const texHref = `${base}/files/${series.id}/tex`;
   const [texSource, setTexSource] = useState<string | null>(null);
@@ -167,6 +170,34 @@ function SeriesPreviewTabs({
 
     void load();
   }, [hasTex, tab, texFile, texHref, texReloadToken]);
+
+  useEffect(() => {
+    if (!targetExerciseId) return;
+    if (!series.exercises.some((ex) => ex.id === targetExerciseId)) return;
+    if (!canShowHtmlPreview) return;
+    if (tab !== 'html') {
+      setTab('html');
+      return;
+    }
+    if (lastScrolledRef.current === targetExerciseId) return;
+
+    let attempts = 0;
+    const maxAttempts = 12;
+    const attemptScroll = () => {
+      const el = document.getElementById(`exercise-${targetExerciseId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        lastScrolledRef.current = targetExerciseId;
+        return;
+      }
+      attempts += 1;
+      if (attempts < maxAttempts) {
+        setTimeout(attemptScroll, 100);
+      }
+    };
+
+    attemptScroll();
+  }, [canShowHtmlPreview, exerciseHtmlMap, series.exercises, tab, targetExerciseId]);
 
   const handleCopyTex = async () => {
     if (!hasTex || copying) return;
@@ -473,6 +504,7 @@ export default function SeriesDetailPage() {
   const [replyTarget, setReplyTarget] = useState<Record<number, Comment | null>>({});
   const [commentSort, setCommentSort] = useState<'asc' | 'desc'>('asc');
   const [exerciseHtml, setExerciseHtml] = useState<Record<number, string>>({});
+  const [targetExerciseId, setTargetExerciseId] = useState<number | null>(null);
   const exerciseIds = useMemo(
     () => series?.exercises.map((ex) => ex.id) ?? [],
     [series]
@@ -923,6 +955,16 @@ export default function SeriesDetailPage() {
     });
   }, [series]);
 
+  useEffect(() => {
+    const parseHash = () => {
+      const match = window.location.hash.match(/^#exercise-(\d+)/);
+      setTargetExerciseId(match ? Number(match[1]) : null);
+    };
+    parseHash();
+    window.addEventListener('hashchange', parseHash);
+    return () => window.removeEventListener('hashchange', parseHash);
+  }, []);
+
   const handleAddComment = async (exerciseId: number) => {
     const text = commentDrafts[exerciseId] || '';
     if (!text.trim()) return;
@@ -1088,6 +1130,7 @@ export default function SeriesDetailPage() {
             currentUser={currentUser}
             exerciseHtmlMap={exerciseHtml}
             renderCommentsForExercise={(ex, context) => renderComments(ex, context)}
+            targetExerciseId={targetExerciseId}
           />
         </div>
 

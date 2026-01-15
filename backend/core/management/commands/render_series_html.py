@@ -1,4 +1,5 @@
 import hashlib
+import os
 import shutil
 import subprocess
 import tempfile
@@ -19,6 +20,7 @@ MARKER_RE = re.compile(rf"{MARKER_TOKEN}(\d+)")
 
 # Bump this when changing the render backend/options so cached HTML is regenerated.
 RENDER_PIPELINE_ID = "latexml-html5-fragment-v7"
+LATEXML_TIMEOUT = int(os.getenv("LATEXML_TIMEOUT_SECONDS", "60"))
 
 
 def _replace_markers_with_comments(html: str) -> str:
@@ -144,7 +146,34 @@ def _resolve_include_path(base_dir: Path, ref: str, semester_root: Path) -> Path
     return None
 
 
-def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None = None) -> str:
+def _read_tex_text(tex_path: Path) -> str:
+    try:
+        return tex_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return tex_path.read_text(encoding="latin-1")
+
+
+def _should_inline_preamble_only(tex_path: Path) -> bool:
+    try:
+        text = _read_tex_text(tex_path)
+    except OSError:
+        return False
+    lower = text.lower()
+    if "\\begin{document}" not in lower:
+        return False
+    if "%childdoc" in lower:
+        return True
+    if "\\include{" in lower or "\\includeonly" in lower:
+        return True
+    return False
+
+
+def _inline_inputs(
+    tex_path: Path,
+    semester_root: Path,
+    seen: set[Path] | None = None,
+    stop_at_begin_document: bool = False,
+) -> str:
     seen = seen or set()
     try:
         resolved = tex_path.resolve()
@@ -155,12 +184,15 @@ def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None =
     seen.add(resolved)
 
     try:
-        text = tex_path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        text = tex_path.read_text(encoding="latin-1")
+        text = _read_tex_text(tex_path)
+    except OSError:
+        return ""
 
     out: list[str] = []
     for line in text.splitlines(keepends=True):
+        if stop_at_begin_document and re.search(r"\\begin\{document\}", line, re.IGNORECASE):
+            out.append(line)
+            break
         # Drop TeX's file terminator so downstream converters don't stop mid-document when we inline.
         if line.strip().lower() == r"\endinput":
             continue
@@ -168,7 +200,15 @@ def _inline_inputs(tex_path: Path, semester_root: Path, seen: set[Path] | None =
         if m:
             target = _resolve_include_path(tex_path.parent, m.group(2), semester_root)
             if target:
-                out.append(_inline_inputs(target, semester_root, seen))
+                preamble_only = _should_inline_preamble_only(target)
+                out.append(
+                    _inline_inputs(
+                        target,
+                        semester_root,
+                        seen,
+                        stop_at_begin_document=preamble_only,
+                    )
+                )
                 continue
         out.append(line)
     return "".join(out)
@@ -278,7 +318,18 @@ def _render_tex_to_html(
             str(input_path),
         ]
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=LATEXML_TIMEOUT)
+        except FileNotFoundError as exc:
+            return 127, "", f"latexmlc not found: {exc}"
+        except subprocess.TimeoutExpired as exc:
+            timeout_parts = []
+            if exc.stderr:
+                timeout_parts.append(exc.stderr)
+            if exc.stdout:
+                timeout_parts.append(exc.stdout)
+            timeout_parts.append(f"latexmlc timed out after {LATEXML_TIMEOUT}s")
+            return 124, "", "\n".join(part.strip() for part in timeout_parts if part and part.strip())
         log_parts = []
         if log_path.exists():
             try:
@@ -914,6 +965,8 @@ class Command(BaseCommand):
 \begin{document}
 """
             raw_tex = preamble + raw_tex + "\n\\end{document}\n"
+        elif "\\end{document}" not in raw_tex:
+            raw_tex = raw_tex + "\n\\end{document}\n"
 
         begin_doc = raw_tex.find("\\begin{document}")
         if begin_doc != -1:

@@ -3,6 +3,7 @@ psycopg2-binary
 django-ninja
 django-cors-headers
 django-allauth
+django-rq
 gunicorn
 mysqlclient
 python-dotenv

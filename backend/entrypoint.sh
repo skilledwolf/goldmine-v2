@@ -54,10 +54,28 @@ PY
 wait_for_postgres
 wait_for_mariadb
 
-python manage.py migrate --noinput
+if [ "${DJANGO_SKIP_MIGRATIONS:-0}" != "1" ]; then
+  python manage.py migrate --noinput
 
-if [ "${RUN_LEGACY_MIGRATION:-0}" != "0" ]; then
-  python manage.py migrate_legacy
+  if [ "${RUN_LEGACY_MIGRATION:-0}" != "0" ]; then
+    python manage.py migrate_legacy
+  fi
+fi
+
+if [ "${DJANGO_COLLECTSTATIC:-0}" != "0" ]; then
+  python manage.py collectstatic --noinput
+fi
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
+DEBUG_FLAG="${DJANGO_DEBUG:-1}"
+if [ "${DJANGO_USE_GUNICORN:-0}" != "0" ] || [ "${DEBUG_FLAG}" = "0" ] || [ "${DEBUG_FLAG}" = "false" ] || [ "${DEBUG_FLAG}" = "False" ] || [ "${DEBUG_FLAG}" = "FALSE" ]; then
+  GUNICORN_BIND="${GUNICORN_BIND:-0.0.0.0:8000}"
+  GUNICORN_WORKERS="${WEB_CONCURRENCY:-3}"
+  GUNICORN_TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+  exec gunicorn config.wsgi:application --bind "${GUNICORN_BIND}" --workers "${GUNICORN_WORKERS}" --timeout "${GUNICORN_TIMEOUT}"
 fi
 
 exec python manage.py runserver 0.0.0.0:8000

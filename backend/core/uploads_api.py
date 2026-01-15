@@ -16,6 +16,10 @@ from .models import UploadJob, Lecture, SemesterGroup, Series
 
 uploads_router = Router()
 
+UPLOAD_MAX_BYTES = int(os.getenv("UPLOAD_MAX_BYTES", str(500 * 1024 * 1024)))
+UPLOAD_MAX_FILES = int(os.getenv("UPLOAD_MAX_FILES", "10000"))
+UPLOAD_MAX_UNCOMPRESSED_BYTES = int(os.getenv("UPLOAD_MAX_UNCOMPRESSED_BYTES", str(2 * 1024 * 1024 * 1024)))
+
 
 def require_staff(request):
     if not request.user.is_authenticated:
@@ -70,6 +74,17 @@ def _uploads_root() -> Path:
 def _safe_extract_zip(zip_path: Path, dest_dir: Path) -> None:
     dest_dir.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(zip_path, "r") as zf:
+        total_size = 0
+        file_count = 0
+        for info in zf.infolist():
+            if info.is_dir():
+                continue
+            file_count += 1
+            total_size += int(info.file_size or 0)
+            if file_count > UPLOAD_MAX_FILES:
+                raise HttpError(413, "Zip contains too many files")
+            if total_size > UPLOAD_MAX_UNCOMPRESSED_BYTES:
+                raise HttpError(413, "Zip contents are too large")
         for info in zf.infolist():
             name = info.filename
             if not name or name.endswith("/"):
@@ -238,6 +253,8 @@ def create_upload(request):
     file = request.FILES.get("file")
     if not file:
         raise HttpError(400, "Missing zip file (field: file)")
+    if getattr(file, "size", 0) > UPLOAD_MAX_BYTES:
+        raise HttpError(413, "Upload too large")
 
     lecture_id = request.POST.get("lecture_id")
     year = request.POST.get("year")

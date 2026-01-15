@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-goldmine_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_DB=${POSTGRES_DB:-goldmine_v2}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - goldmine_net
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    networks:
+      - goldmine_net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    working_dir: /app
+    restart: always
+    environment:
+      - DJANGO_DEBUG=0
+      - DJANGO_USE_GUNICORN=1
+      - DJANGO_COLLECTSTATIC=1
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      - DJANGO_BEHIND_PROXY=1
+      - DJANGO_SECURE_SSL_REDIRECT=${DJANGO_SECURE_SSL_REDIRECT:-true}
+      - POSTGRES_USER=${POSTGRES_USER:-goldmine_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_DB=${POSTGRES_DB:-goldmine_v2}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+      - CSRF_TRUSTED_ORIGINS=${CSRF_TRUSTED_ORIGINS}
+      - SITE_ID=${SITE_ID:-1}
+    volumes:
+      - media_data:/app/media
+    depends_on:
+      - db
+      - redis
+    networks:
+      - goldmine_net
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    working_dir: /app
+    restart: always
+    command: python manage.py rqworker default
+    environment:
+      - DJANGO_DEBUG=0
+      - DJANGO_USE_GUNICORN=0
+      - DJANGO_SKIP_MIGRATIONS=1
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - POSTGRES_USER=${POSTGRES_USER:-goldmine_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_DB=${POSTGRES_DB:-goldmine_v2}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+    volumes:
+      - media_data:/app/media
+    depends_on:
+      - db
+      - redis
+    networks:
+      - goldmine_net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    restart: always
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+    depends_on:
+      - backend
+    networks:
+      - goldmine_net
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - goldmine_net
+
+volumes:
+  postgres_data:
+  media_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  goldmine_net:
+    driver: bridge
