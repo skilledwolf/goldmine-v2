@@ -48,3 +48,60 @@ in `docker-compose.prod.yml`.
 ```
 docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
 ```
+
+## Backups & restore (recommended)
+
+Backups are usually an infrastructure concern, not application code. This repo does **not** run cron/scheduled backups for you, but you should back up the data volumes used by the production stack.
+
+### What to back up
+- **Postgres**: `postgres_data` (or a `pg_dump`).
+- **Media / lecture assets**: `media_data` (or a tarball/sync of `/app/media`).
+- **Optional**: Caddy state (`caddy_data`) to preserve TLS cert cache across restores (certs can be re-issued, but may hit rate limits if you rebuild often).
+- **Not needed**: Redis (queue/cache) is typically ephemeral.
+
+### Best practice (easiest ops)
+- Use a **managed Postgres** with automatic backups + point-in-time recovery.
+- Store media in **object storage** (S3/GCS/etc.) with versioning/retention.
+
+### Self-hosted VM (example commands)
+Create a local folder for backup artifacts:
+
+```
+mkdir -p backups
+```
+
+Database dump:
+
+```
+docker compose -f docker-compose.prod.yml exec -T db sh -lc \
+  'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+  > backups/postgres.sql
+```
+
+Media tarball:
+
+```
+docker compose -f docker-compose.prod.yml exec -T backend sh -lc \
+  'tar -czf - -C /app/media .' \
+  > backups/media.tgz
+```
+
+Store these artifacts off-host (and preferably encrypted), and keep a retention policy (e.g. daily + weekly).
+
+### Restore (high-level)
+1) Bring up the stack (`docker compose -f docker-compose.prod.yml up -d`), then stop the app services (`backend`, `worker`, `frontend`) while restoring.
+2) Restore DB:
+
+```
+cat backups/postgres.sql | docker compose -f docker-compose.prod.yml exec -T db sh -lc \
+  'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
+```
+
+3) Restore media:
+
+```
+cat backups/media.tgz | docker compose -f docker-compose.prod.yml exec -T backend sh -lc \
+  'tar -xzf - -C /app/media'
+```
+
+4) Start services and run migrations if needed (`docker compose -f docker-compose.prod.yml up -d`).
