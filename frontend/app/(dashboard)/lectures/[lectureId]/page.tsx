@@ -61,6 +61,7 @@ export default function LectureDetailPage() {
   const { data: lecture, error, isLoading } = useApiSWR<Lecture>(
     lectureId ? `/lectures/${lectureId}` : null
   );
+  const lectureKey = lectureId ? `/lectures/${lectureId}` : null;
   const errorMessage = error instanceof Error ? error.message : error ? 'Failed to load lecture' : null;
   const [activeGroupId, setActiveGroupId] = useState<string>(() => searchParams.get('semesterGroup') || 'all');
   const { isStarred, toggleStar } = useStarredLectures();
@@ -112,7 +113,7 @@ export default function LectureDetailPage() {
 
     try {
       await apiFetch(`/semester_groups/${id}`, { method: 'DELETE' });
-      mutate(`/lectures/${lecture.id}`);
+      if (lectureKey) mutate(lectureKey);
     } catch (err: any) {
       alert(err.message || 'Failed to delete semester group');
     }
@@ -125,7 +126,7 @@ export default function LectureDetailPage() {
 
     try {
       await apiFetch(`/series-mgmt/series/${id}`, { method: 'DELETE' });
-      mutate(`/lectures/${lecture.id}`);
+      if (lectureKey) mutate(lectureKey);
     } catch (err: any) {
       alert(err.message || 'Failed to delete series');
     }

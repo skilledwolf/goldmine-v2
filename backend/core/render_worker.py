@@ -55,7 +55,9 @@ def _run_command_for_job(
     close_old_connections()
     job = RenderJob.objects.select_related("user").get(id=job_id)
 
-    state = _JobState(completed_series=set(), last_flush_at=0.0, log=job.output_log or "")
+    state = _JobState(
+        completed_series=set(), last_flush_at=0.0, log=job.output_log or ""
+    )
 
     def mark_completed(series_id: int, kind: str) -> None:
         if series_id in state.completed_series:
@@ -130,7 +132,9 @@ def _run_command_for_job(
         assert proc.stdout is not None
         for line in proc.stdout:
             # Stop early if cancelled.
-            if RenderJob.objects.filter(id=job_id, status=RenderJob.Status.CANCELLED).exists():
+            if RenderJob.objects.filter(
+                id=job_id, status=RenderJob.Status.CANCELLED
+            ).exists():
                 try:
                     proc.terminate()
                 except Exception:
