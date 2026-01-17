@@ -2,6 +2,9 @@
 
 Goldmine V2 is a web app for managing university lecture materials (exercise sheets, solutions, and related metadata). The current version is built strictly as an internal database for teaching assistants and professors to organize content and keep course materials consistent.
 
+## Project status
+Goldmine V2 has not been battle-tested in a production setting and is currently maintained as a private/internal project. If you want to deploy it or seriously get involved in development, please reach out to the author first (see “Author” below).
+
 ## Features
 - Lecture catalog with semesters and series (exercise sheets)
 - PDF/TeX/solution uploads plus bulk import helpers
