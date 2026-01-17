@@ -1,0 +1,80 @@
+# Goldmine V2
+
+Goldmine V2 is a web app for managing university lecture materials (exercise sheets, solutions, and related metadata). The current version is built strictly as an internal database for teaching assistants and professors to organize content and keep course materials consistent.
+
+## Features
+- Lecture catalog with semesters and series (exercise sheets)
+- PDF/TeX/solution uploads plus bulk import helpers
+- HTML rendering of TeX via background render jobs
+- Full-text search across lectures, series, and exercises
+- Comments on exercises
+- Role-based access (staff / professor / assistant) and course memberships
+- Soft delete + trash restore with audit metadata
+- Issue dashboard for missing/failed assets
+
+## Use cases
+- Internal knowledge base for teaching staff
+- Coordinated management of lecture materials across semesters
+- Migration from a legacy system (optional MariaDB import)
+
+## Intended audience
+- Course staff and administrators
+- Teaching assistants
+- Professors
+- Ops/DevOps teams hosting the service
+
+## Potential student-facing extension (future work)
+Goldmine V2 could be extended to be student-facing, but that requires additional features and stricter access controls:
+
+- **Read-only student role**: students should never edit content and should only access semesters they’ve been explicitly granted.
+- **Release scheduling**: enforce timed release of series and solutions when uploading exercise sheets.
+- **Interactive assignments/quizzes**: a next-level extension for interactive teaching tools and/or homework workflows.
+
+## Tech stack
+- Frontend: Next.js (App Router), React, Tailwind, SWR
+- Backend: Django + django-ninja
+- Datastores: Postgres (primary), Redis (jobs/queue), optional MariaDB for legacy imports
+- Rendering: LaTeXML/TeXLive + MathJax
+- Containerized with Docker; Caddy reverse proxy for production
+
+## Quick start (dev)
+From the repo root:
+
+```bash
+docker compose up --build
+```
+
+- Frontend: http://localhost:3000
+- API: http://localhost:8000/api
+- Django admin: http://localhost:8000/admin
+
+Create a local admin user:
+
+```bash
+docker compose exec backend python manage.py createsuperuser
+```
+
+## Production
+See `DEPLOYMENT.md` for Docker + Caddy deployment and backup guidance.
+
+## Configuration
+- Example backend env file: `backend/.env.example` (for local, non-Docker usage)
+- Production uses a root `.env` consumed by `docker-compose.prod.yml`
+- Do **not** commit real secrets; use environment variables or secret managers
+
+## Repo layout
+- `backend/` Django app + API
+- `frontend/` Next.js app
+- `docker-compose.yml` local dev stack
+- `docker-compose.prod.yml` production stack
+- `Caddyfile` reverse proxy config
+- `scripts/` deploy and backup helpers
+
+## Background
+This is a full bottom-up reimagined implementation of a similar system we had at ITP at ETH Zurich during the time I was a PhD student there.
+
+## Author
+Dr. Tobias Wolf — tobiaswolf.net (2025)
+
+## License
+AGPL-3.0-only. See `LICENSE`.
