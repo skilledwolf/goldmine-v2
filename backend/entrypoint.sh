@@ -62,6 +62,10 @@ if [ "${DJANGO_SKIP_MIGRATIONS:-0}" != "1" ]; then
   fi
 fi
 
+if [ "${SEED_DEV_DATA:-0}" != "0" ]; then
+  python manage.py seed_dev_data
+fi
+
 if [ "${DJANGO_COLLECTSTATIC:-0}" != "0" ]; then
   python manage.py collectstatic --noinput
 fi

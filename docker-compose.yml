@@ -45,7 +45,8 @@ services:
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev_secret_key_123
-      - DJANGO_SKIP_MIGRATIONS=1
+      - DJANGO_SKIP_MIGRATIONS=0
+      - SEED_DEV_DATA=1
       - POSTGRES_USER=goldmine_user
       - POSTGRES_PASSWORD=goldmine_dev_secret
       - POSTGRES_DB=goldmine_v2
