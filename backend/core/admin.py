@@ -1,9 +1,19 @@
 from django.contrib import admin
-from .models import Lecture, SemesterGroup, Series, Exercise, UserComment, UploadJob
+from .models import Lecture, SemesterGroup, Series, Exercise, UserComment, UploadJob, CourseMembership
+
+class CourseMembershipInline(admin.TabularInline):
+    model = CourseMembership
+    extra = 1
 
 class SemesterGroupInline(admin.TabularInline):
     model = SemesterGroup
     extra = 0
+
+@admin.register(CourseMembership)
+class CourseMembershipAdmin(admin.ModelAdmin):
+    list_display = ('user', 'semester_group', 'role', 'created_at')
+    list_filter = ('role', 'semester_group__lecture', 'semester_group__year')
+    search_fields = ('user__username', 'semester_group__lecture__name')
 
 @admin.register(Lecture)
 class LectureAdmin(admin.ModelAdmin):

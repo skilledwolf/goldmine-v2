@@ -1,9 +1,9 @@
 Django>=5.0,<5.1
 psycopg2-binary
 django-ninja
+mysqlclient
 django-cors-headers
 django-allauth
 django-rq
 gunicorn
-mysqlclient
 python-dotenv

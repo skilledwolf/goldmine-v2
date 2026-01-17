@@ -5,6 +5,7 @@ from ninja.security import django_auth
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from typing import Optional
+from .permissions import is_global_professor
 
 router = Router(auth=None)
 
@@ -17,12 +18,14 @@ class UserSchema(Schema):
     username: str
     email: str = ""
     is_staff: bool = False
+    is_professor: bool = False
 
 @router.post("/login", auth=None, response={200: UserSchema, 401: dict})
 def login(request: HttpRequest, data: LoginSchema):
     user = authenticate(request, username=data.username, password=data.password)
     if user is not None:
         django_login(request, user)
+        user.is_professor = is_global_professor(user)
         return 200, user
     return 401, {"message": "Invalid credentials"}
 
@@ -34,6 +37,7 @@ def logout(request: HttpRequest):
 @router.get("/me", auth=django_auth, response={200: UserSchema, 401: dict})
 def me(request: HttpRequest):
     if request.user.is_authenticated:
+        request.user.is_professor = is_global_professor(request.user)
         return 200, request.user
     return 401, {"message": "Not authenticated"}
 

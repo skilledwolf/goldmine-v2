@@ -3,13 +3,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useSearchParams } from 'next/navigation';
-import { getApiBase } from '@/lib/api';
+import { getApiBase, apiFetch } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { addRecentItem } from '@/lib/recent';
 import { useApiSWR } from '@/lib/swr';
 import { useStarredLectures } from '@/lib/stars';
-import { Star, FileCheck } from 'lucide-react';
+import { Star, FileCheck, Upload, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
+import { SheetUploadDialog } from './sheet-upload-dialog';
+import { useAuth } from '@/lib/auth';
+import { SemesterCreateDialog } from './semester-create-dialog';
+import { mutate } from 'swr';
 
 type Exercise = {
   id: number;
@@ -37,6 +41,7 @@ type SemesterGroup = {
   semester: string;
   professors: string;
   fs_path?: string;
+  can_edit?: boolean;
   series: Series[];
 };
 
@@ -59,6 +64,10 @@ export default function LectureDetailPage() {
   const errorMessage = error instanceof Error ? error.message : error ? 'Failed to load lecture' : null;
   const [activeGroupId, setActiveGroupId] = useState<string>(() => searchParams.get('semesterGroup') || 'all');
   const { isStarred, toggleStar } = useStarredLectures();
+
+  const { isStaff, isProfessor } = useAuth();
+  const canManageGlobal = isStaff || isProfessor;
+
   const lectureCrumbs = useMemo(() => {
     if (!lecture) return null;
     return [
@@ -96,6 +105,37 @@ export default function LectureDetailPage() {
     return lecture.semester_groups.filter((sg) => sg.id === id);
   }, [lecture, effectiveGroupId]);
 
+  const handleDeleteSemester = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Delete this semester group? It will be moved to Trash and can be restored.')) return;
+
+    try {
+      await apiFetch(`/semester_groups/${id}`, { method: 'DELETE' });
+      mutate(`/lectures/${lecture.id}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete semester group');
+    }
+  };
+
+  const handleDeleteSeries = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Delete this series? It will be moved to Trash and can be restored.')) return;
+
+    try {
+      await apiFetch(`/series-mgmt/series/${id}`, { method: 'DELETE' });
+      mutate(`/lectures/${lecture.id}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete series');
+    }
+  };
+
+  const getNextSeriesNumber = (series: Series[]) => {
+    if (!series || series.length === 0) return 1;
+    return Math.max(...series.map(s => s.number)) + 1;
+  };
+
   if (isLoading) return <div className="p-4 text-muted-foreground">Loading lecture…</div>;
   if (errorMessage) return <div className="p-4 text-destructive">{errorMessage}</div>;
   if (!lecture) return null;
@@ -124,11 +164,24 @@ export default function LectureDetailPage() {
             </h1>
           </div>
         </div>
-        <Button variant="ghost" className="self-start md:self-center gap-2 text-muted-foreground hover:text-primary" asChild>
-          <Link href="/lectures">
-            <span className="text-lg">←</span> Back to lectures
-          </Link>
-        </Button>
+
+        <div className="flex items-center gap-2">
+          {canManageGlobal && (
+            <SemesterCreateDialog
+              lectureId={lecture.id}
+              trigger={
+                <Button variant="outline" className="gap-2">
+                  <Plus className="h-4 w-4" /> Add Semester
+                </Button>
+              }
+            />
+          )}
+          <Button variant="ghost" className="self-start md:self-center gap-2 text-muted-foreground hover:text-primary" asChild>
+            <Link href="/lectures">
+              <span className="text-lg">←</span> Back to lectures
+            </Link>
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">
@@ -174,16 +227,42 @@ export default function LectureDetailPage() {
                     <span className="font-medium text-foreground/80">Professors:</span> {sg.professors || 'n/a'}
                   </p>
                 </div>
-                <Button size="sm" variant="outline" className="shadow-sm" asChild>
-                  <a
-                    href={`${apiBase}/files/semester/${sg.id}/zip`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="gap-2"
-                  >
-                    <span className="text-primary">↓</span> Download ZIP
-                  </a>
-                </Button>
+                <div className="flex items-center gap-2">
+                  {sg.can_edit && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => handleDeleteSemester(e, sg.id)}
+                      title="Delete Semester"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
+                  {sg.can_edit && (
+                    <SheetUploadDialog
+                      semesterGroupId={sg.id}
+                      lectureId={lecture.id}
+                      initialNumber={getNextSeriesNumber(sg.series)}
+                      mode="create"
+                      trigger={
+                        <Button size="sm" variant="default" className="shadow-sm gap-2">
+                          <Plus className="h-4 w-4" /> Add Sheet {getNextSeriesNumber(sg.series)}
+                        </Button>
+                      }
+                    />
+                  )}
+                  <Button size="sm" variant="outline" className="shadow-sm" asChild>
+                    <a
+                      href={`${apiBase}/files/semester/${sg.id}/zip`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="gap-2"
+                    >
+                      <span className="text-primary">↓</span> Download ZIP
+                    </a>
+                  </Button>
+                </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -208,6 +287,32 @@ export default function LectureDetailPage() {
                         )}
                         {series.solution_file && (
                           <span className="flex h-2 w-2 rounded-full bg-green-500 ring-2 ring-green-500/20" title="Solutions available" />
+                        )}
+                        {sg.can_edit && (
+                          <div className="flex items-center gap-1">
+                            <SheetUploadDialog
+                              semesterGroupId={sg.id}
+                              lectureId={lecture.id}
+                              seriesId={series.id}
+                              initialNumber={series.number}
+                              initialTitle={series.title}
+                              mode="replace"
+                              trigger={
+                                <button className="text-muted-foreground hover:text-primary transition-colors p-1">
+                                  <Pencil className="h-3 w-3" />
+                                </button>
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive transition-colors p-1"
+                              title="Delete series"
+                              aria-label="Delete series"
+                              onClick={(e) => handleDeleteSeries(e, series.id)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                       <h3 className="font-semibold text-lg leading-tight group-hover:text-primary transition-colors">

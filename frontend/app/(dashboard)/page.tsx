@@ -61,14 +61,30 @@ export default function DashboardHome() {
   } = useApiSWR<User | { message: string }>('/auth/me');
 
   const lectures = useMemo(() => lectureData ?? [], [lectureData]);
+  const sortedLectures = useMemo(() => {
+    return lectures
+      .slice()
+      .sort((a, b) => {
+        const aHas = a.semester_groups.length > 0;
+        const bHas = b.semester_groups.length > 0;
+        if (aHas !== bHas) return aHas ? -1 : 1;
+        const aName = (a.long_name || a.name || '').toLowerCase();
+        const bName = (b.long_name || b.name || '').toLowerCase();
+        if (aName !== bName) return aName.localeCompare(bName);
+        const aShort = (a.name || '').toLowerCase();
+        const bShort = (b.name || '').toLowerCase();
+        if (aShort !== bShort) return aShort.localeCompare(bShort);
+        return a.id - b.id;
+      });
+  }, [lectures]);
   const user = me && !('message' in me) ? me : null;
   const loading = lecturesLoading || meLoading;
   const visibleLectures = useMemo(() => {
     if (showStarredOnly) {
-      return lectures.filter((lecture) => starredIds.includes(lecture.id));
+      return sortedLectures.filter((lecture) => starredIds.includes(lecture.id));
     }
-    return lectures;
-  }, [lectures, showStarredOnly, starredIds]);
+    return sortedLectures;
+  }, [sortedLectures, showStarredOnly, starredIds]);
   const displayLectures = useMemo(() => {
     if (showStarredOnly) {
       return visibleLectures.slice(0, 6);
@@ -101,12 +117,12 @@ export default function DashboardHome() {
   }, [starredIds.length, showStarredOnly]);
 
   useEffect(() => {
-    if (lectures.length === 0) return;
+    if (sortedLectures.length === 0) return;
     let cancelled = false;
     const loadRecentSeries = async () => {
       setRecentSeriesLoading(true);
       try {
-        const lectureIds = lectures.map((l) => l.id).slice(0, 12);
+        const lectureIds = sortedLectures.map((l) => l.id).slice(0, 12);
         const seriesLists = await Promise.all(
           lectureIds.map((id) => apiFetch<SeriesSummary[]>(`/lectures/${id}/series`))
         );
@@ -132,7 +148,7 @@ export default function DashboardHome() {
     return () => {
       cancelled = true;
     };
-  }, [lectures]);
+  }, [sortedLectures]);
 
   const handleRetry = () => {
     mutateLectures();

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import useSWR from 'swr';
+import { useApiSWR } from '@/lib/swr';
 import { apiFetch } from '@/lib/api';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
 import { Card } from '@/components/ui/card';
@@ -122,16 +122,14 @@ export default function RenderJobsPage() {
   );
   useBreadcrumbs(crumbs);
 
-  const fetcher = <T,>(key: string) => apiFetch<T>(key);
-
-  const { data: me } = useSWR<Me>('/auth/me', fetcher);
+  const { data: me } = useApiSWR<Me>('/auth/me');
   const isStaff = !!(me && !('message' in me) && me.is_staff);
 
   const {
     data: lectureData,
     error: lectureError,
     isLoading: lectureLoading,
-  } = useSWR<LectureListItem[]>(isStaff ? '/lectures' : null, fetcher);
+  } = useApiSWR<LectureListItem[]>(isStaff ? '/lectures' : null);
   const lectures = lectureData ?? [];
 
   const {
@@ -139,7 +137,7 @@ export default function RenderJobsPage() {
     error,
     isLoading,
     mutate: mutateJobs,
-  } = useSWR<RenderJob[]>('/render/jobs?limit=25', fetcher, { refreshInterval: 5000 });
+  } = useApiSWR<RenderJob[]>('/render/jobs?limit=25', { refreshInterval: 5000 });
 
   const [selectedId, setSelectedId] = useState<number | null>(null);
   useEffect(() => {
@@ -159,7 +157,7 @@ export default function RenderJobsPage() {
   const {
     data: job,
     mutate: mutateJob,
-  } = useSWR<RenderJob>(selectedId ? `/render/jobs/${selectedId}` : null, fetcher, {
+  } = useApiSWR<RenderJob>(selectedId ? `/render/jobs/${selectedId}` : null, {
     refreshInterval: shouldPollSelectedJob ? 1000 : 0,
   });
 
@@ -181,7 +179,7 @@ export default function RenderJobsPage() {
     data: lectureDetail,
     error: lectureDetailError,
     isLoading: lectureDetailLoading,
-  } = useSWR<LectureDetail>(lectureId ? `/lectures/${lectureId}` : null, fetcher);
+  } = useApiSWR<LectureDetail>(lectureId ? `/lectures/${lectureId}` : null);
 
   useEffect(() => {
     if (!lectureId) return;
@@ -600,9 +598,8 @@ export default function RenderJobsPage() {
                       key={j.id}
                       type="button"
                       onClick={() => setSelectedId(j.id)}
-                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                        active ? 'border-primary bg-primary/5' : 'border-border/50 hover:bg-muted/40'
-                      }`}
+                      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${active ? 'border-primary bg-primary/5' : 'border-border/50 hover:bg-muted/40'
+                        }`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-mono text-xs text-muted-foreground">#{j.id}</div>

@@ -8,8 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useApiSWR } from '@/lib/swr';
 import { useStarredLectures } from '@/lib/stars';
-import { Star } from 'lucide-react';
+import { Star, Plus, Trash2 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
+import { useAuth } from '@/lib/auth';
+import { LectureCreateDialog } from './lecture-create-dialog';
+import { apiFetch } from '@/lib/api';
 
 type Lecture = {
   id: number;
@@ -29,6 +32,8 @@ export default function LecturesPage() {
   } = useApiSWR<Lecture[]>(endpoint);
   const lectures = lectureData ?? [];
   const { isStarred, toggleStar } = useStarredLectures();
+  const { isStaff, isProfessor } = useAuth();
+  const canManage = isStaff || isProfessor;
 
   useEffect(() => {
     document.title = 'Lectures · Gold Mine V2';
@@ -45,6 +50,19 @@ export default function LecturesPage() {
 
   const handleRetry = () => {
     mutate();
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirm('Delete this lecture? It will be moved to Trash and can be restored.')) return;
+
+    try {
+      await apiFetch(`/lectures/${id}`, { method: 'DELETE' });
+      mutate();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete lecture');
+    }
   };
 
   const renderLoading = () => (
@@ -71,12 +89,21 @@ export default function LecturesPage() {
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
-            Lectures
-          </h1>
-          <p className="text-muted-foreground">Browse all available lectures and their semesters.</p>
-        </div>
+        <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent">
+          Lectures
+        </h1>
+        <p className="text-muted-foreground">Browse all available lectures and their semesters.</p>
+      </div>
+      <div className="flex items-center gap-4 w-full md:w-auto">
+        {canManage && (
+          <LectureCreateDialog
+            trigger={
+              <Button className="gap-2 shrink-0">
+                <Plus className="h-4 w-4" /> Create Lecture
+              </Button>
+            }
+          />
+        )}
         <div className="w-full md:w-96">
           <div className="relative group">
             <Input
@@ -97,7 +124,7 @@ export default function LecturesPage() {
       {isLoading && renderLoading()}
       {error && (
         <div className="rounded-lg border border-destructive/20 bg-destructive/10 p-4 text-destructive flex items-center justify-between">
-          <span>{error}</span>
+          <span>{error instanceof Error ? error.message : 'Failed to load lectures'}</span>
           <Button variant="outline" size="sm" onClick={handleRetry} className="border-destructive/30 hover:bg-destructive/20">
             Retry
           </Button>
@@ -114,15 +141,31 @@ export default function LecturesPage() {
                   <div className="font-mono text-xs text-muted-foreground bg-muted/50 px-2 py-1 rounded w-fit">
                     /{lecture.name}
                   </div>
-                  <button
-                    type="button"
-                    className={`rounded-full p-2 transition-colors hover:bg-muted ${isStarred(lecture.id) ? 'text-amber-500' : 'text-muted-foreground'}`}
-                    onClick={() => toggleStar(lecture.id)}
-                    aria-pressed={isStarred(lecture.id)}
-                    aria-label={isStarred(lecture.id) ? 'Unstar lecture' : 'Star lecture'}
-                  >
-                    <Star className="h-4 w-4" fill={isStarred(lecture.id) ? 'currentColor' : 'none'} />
-                  </button>
+                  <div className="flex gap-1">
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="rounded-full p-2 transition-colors hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => handleDelete(e, lecture.id)}
+                        aria-label="Delete lecture"
+                        title="Delete lecture"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className={`rounded-full p-2 transition-colors hover:bg-muted ${isStarred(lecture.id) ? 'text-amber-500' : 'text-muted-foreground'}`}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        toggleStar(lecture.id);
+                      }}
+                      aria-pressed={isStarred(lecture.id)}
+                      aria-label={isStarred(lecture.id) ? 'Unstar lecture' : 'Star lecture'}
+                    >
+                      <Star className="h-4 w-4" fill={isStarred(lecture.id) ? 'currentColor' : 'none'} />
+                    </button>
+                  </div>
                 </div>
                 <CardTitle className="text-xl font-bold leading-tight group-hover:text-primary transition-colors line-clamp-2">
                   {lecture.long_name}

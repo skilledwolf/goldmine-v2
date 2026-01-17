@@ -20,6 +20,7 @@ services:
       - goldmine_net
 
   backend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -53,6 +54,7 @@ services:
       - goldmine_net
 
   worker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
@@ -81,6 +83,7 @@ services:
       - goldmine_net
 
   frontend:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod

@@ -17,6 +17,8 @@ import {
     UploadCloud,
     PanelLeftClose,
     PanelLeftOpen,
+    User,
+    Trash2,
 } from 'lucide-react';
 
 export function Sidebar() {
@@ -91,6 +93,9 @@ export function Sidebar() {
         { name: 'Uploads', href: '/uploads', icon: UploadCloud, external: false },
         { name: 'HTML render', href: '/render', icon: Wand2, external: false },
         { name: 'Issues', href: '/issues', icon: Shield, external: false },
+        { name: 'Trash', href: '/trash', icon: Trash2, external: false },
+        { name: 'Users', href: '/users', icon: User, external: false },
+        { name: 'Staffing', href: '/staffing', icon: User, external: false },
         { name: 'Backend admin', href: adminHref, icon: Shield, external: true },
     ] as const;
 

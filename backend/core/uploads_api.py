@@ -314,6 +314,26 @@ def create_upload(request):
     )
 
 
+@uploads_router.get("", response=list[UploadCreateResponseSchema])
+def list_uploads(request, limit: int = 25):
+    require_staff(request)
+    limit = max(1, min(int(limit or 25), 100))
+    jobs = (
+        UploadJob.objects.select_related("lecture", "user")
+        .order_by("-created_at")[:limit]
+    )
+    results = []
+    for job in jobs:
+        report = job.report_json or {"root": "", "series": [], "unassigned": [], "warnings": []}
+        results.append(UploadCreateResponseSchema(
+            id=job.id,
+            status=job.status,
+            fs_path=job.fs_path,
+            report=report,
+        ))
+    return results
+
+
 @uploads_router.get("/{job_id}", response=UploadCreateResponseSchema)
 def get_upload(request, job_id: int):
     require_staff(request)

@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
-from django.db.models import Prefetch, Q
+from django.db.models import Prefetch, Q, Exists, OuterRef
 from django.contrib.postgres.search import (
     SearchHeadline,
     SearchQuery,
@@ -18,6 +18,7 @@ from ninja.errors import HttpError
 from ninja.security import django_auth
 
 from .models import Exercise, Lecture, SemesterGroup, Series
+from .permissions import has_course_access, is_global_professor
 
 
 def require_staff(request):
@@ -69,6 +70,7 @@ class SemesterGroupSchema(Schema):
     semester: str
     professors: str
     fs_path: str = ""
+    can_edit: bool = False
     series: List[SeriesSchema]
 
 class LectureListSchema(Schema):
@@ -241,19 +243,27 @@ def list_series_issues(request):
 
 @api.get("/lectures", response=List[LectureListSchema])
 def list_lectures(request, q: Optional[str] = None):
-    qs = Lecture.objects.all().prefetch_related('semester_groups')
+    has_semesters = Exists(SemesterGroup.objects.filter(lecture=OuterRef("pk")))
+    qs = (
+        Lecture.objects.annotate(has_semesters=has_semesters)
+        .prefetch_related('semester_groups')
+        .order_by('-has_semesters', 'long_name', 'name')
+    )
     if q:
         qs = qs.filter(Q(name__icontains=q) | Q(long_name__icontains=q))
     return qs
 
 @api.get("/lectures/{lecture_id}", response=LectureSchema)
 def get_lecture(request, lecture_id: int):
-    return get_object_or_404(
+    lecture = get_object_or_404(
         Lecture.objects.prefetch_related(
             Prefetch('semester_groups', queryset=SemesterGroup.objects.prefetch_related('series__exercises'))
         ),
         id=lecture_id
     )
+    for sg in lecture.semester_groups.all():
+        sg.can_edit = has_course_access(request.user, sg)
+    return lecture
 
 @api.get("/series/{series_id}", response=SeriesSchema)
 def get_series(request, series_id: int):
@@ -444,18 +454,42 @@ def search(
 
 @api.post("/lectures", response=LectureSchema)
 def create_lecture(request, payload: LectureCreateSchema):
-    require_staff(request)
+    if not is_global_professor(request.user):
+        raise HttpError(403, "Permission denied")
     lecture = Lecture.objects.create(**payload.dict())
     return lecture
 
 
 @api.post("/lectures/{lecture_id}/semester_groups", response=SemesterGroupSchema)
 def add_semester_group(request, lecture_id: int, payload: SemesterGroupCreateSchema):
-    require_staff(request)
+    if not is_global_professor(request.user):
+        raise HttpError(403, "Permission denied")
     lecture = get_object_or_404(Lecture, id=lecture_id)
     sem_group, _ = SemesterGroup.objects.get_or_create(lecture=lecture, **payload.dict())
     sem_group = SemesterGroup.objects.prefetch_related('series__exercises').get(id=sem_group.id)
     return sem_group
+
+
+@api.delete("/lectures/{lecture_id}", response={204: None, 403: dict})
+def delete_lecture(request, lecture_id: int):
+    if not is_global_professor(request.user):
+        return 403, {"message": "Permission denied"}
+
+    lecture = get_object_or_404(Lecture, id=lecture_id)
+    lecture.soft_delete(user=request.user, reason="Lecture deleted via API")
+    return 204, None
+
+
+@api.delete("/semester_groups/{group_id}", response={204: None, 403: dict})
+def delete_semester_group(request, group_id: int):
+    group = get_object_or_404(SemesterGroup, id=group_id)
+    
+    # Check permissions: global prof or specific course access
+    if not (is_global_professor(request.user) or has_course_access(request.user, group)):
+        return 403, {"message": "Permission denied"}
+
+    group.soft_delete(user=request.user, reason="Semester deleted via API")
+    return 204, None
 
 
 @api.post("/semester_groups/{semester_group_id}/series", response=SeriesSchema)
@@ -475,11 +509,17 @@ def add_series(request, semester_group_id: int, payload: SeriesCreateSchema):
 from .auth_api import router as auth_router
 from .files_api import files_router
 from .comments_api import router as comments_router
+from .users_api import router as users_router
 from .uploads_api import uploads_router
 from .render_api import render_router
+from .series_api import router as series_router
+from .trash_api import router as trash_router
 
 api.add_router("/auth", auth_router)
+api.add_router("/users", users_router)
 api.add_router("/files", files_router)
 api.add_router("/comments", comments_router)
 api.add_router("/uploads", uploads_router)
 api.add_router("/render", render_router)
+api.add_router("/series-mgmt", series_router)
+api.add_router("/trash", trash_router)

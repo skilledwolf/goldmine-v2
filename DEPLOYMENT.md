@@ -32,21 +32,44 @@ By default, this path is backed by the `media_data` volume. You can:
 - copy files into the running container volume, or
 - replace `media_data:/app/media` with a host bind mount to your lecture archive.
 
-## 3) Start the stack
+## 3) Deployment
 
-```
+### Option A: The Easy Way (Pre-built Images)
+This method uses Docker images built automatically by GitHub Actions.
+
+1.  **Log in to GHCR** (only needed once):
+    ```bash
+    echo $CR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+    ```
+    *(You need a Personal Access Token with `read:packages` scope)*
+
+2.  **Start the stack**:
+    ```bash
+    # Pull images and start
+    ./scripts/deploy.sh
+    ```
+
+### Option B: Build on Server
+If you prefer to build the code on the server:
+```bash
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-Caddy will obtain TLS certificates for `DOMAIN` automatically.
-
-The render worker runs in a separate `worker` service and needs Redis. Both are included
-in `docker-compose.prod.yml`.
-
 ## 4) Create a superuser
 
-```
+```bash
 docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
+```
+
+## 5) Backups
+A backup script is provided in `scripts/backup.sh`. You can run it manually or add it to crontab.
+
+```bash
+# Run manually
+./scripts/backup.sh
+
+# Add to crontab (e.g. daily at 3am)
+0 3 * * * /path/to/goldmine-v2/scripts/backup.sh >> /var/log/goldmine_backup.log 2>&1
 ```
 
 ## Backups & restore (recommended)
