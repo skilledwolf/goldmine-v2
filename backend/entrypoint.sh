@@ -25,41 +25,14 @@ else:
 PY
 }
 
-wait_for_mariadb() {
-  if [ "${RUN_LEGACY_MIGRATION:-0}" != "0" ]; then
-    python - <<'PY'
-import os, time, MySQLdb  # provided by mysqlclient
-
-host = os.getenv("LEGACY_DB_HOST", "legacy_db")
-port = int(os.getenv("LEGACY_DB_PORT", "3306"))
-user = os.getenv("LEGACY_DB_USER", "root")
-password = os.getenv("LEGACY_DB_PASSWORD", "root")
-dbname = os.getenv("LEGACY_DB_NAME", "legacy_goldmine")
-
-for attempt in range(30):
-    try:
-        conn = MySQLdb.connect(host=host, port=port, user=user, passwd=password, db=dbname)
-        conn.close()
-        print("MariaDB (legacy) is ready.")
-        break
-    except Exception as exc:
-        print(f"Waiting for MariaDB ({attempt+1}/30): {exc}")
-        time.sleep(1)
-else:
-    raise SystemExit("MariaDB did not become ready in time.")
-PY
-  fi
-}
-
 wait_for_postgres
-wait_for_mariadb
+
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
 
 if [ "${DJANGO_SKIP_MIGRATIONS:-0}" != "1" ]; then
   python manage.py migrate --noinput
-
-  if [ "${RUN_LEGACY_MIGRATION:-0}" != "0" ]; then
-    python manage.py migrate_legacy
-  fi
 fi
 
 if [ "${SEED_DEV_DATA:-0}" != "0" ]; then
@@ -68,10 +41,6 @@ fi
 
 if [ "${DJANGO_COLLECTSTATIC:-0}" != "0" ]; then
   python manage.py collectstatic --noinput
-fi
-
-if [ "$#" -gt 0 ]; then
-  exec "$@"
 fi
 
 DEBUG_FLAG="${DJANGO_DEBUG:-1}"

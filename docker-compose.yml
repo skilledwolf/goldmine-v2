@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16-alpine
@@ -21,17 +19,6 @@ services:
     networks:
       - goldmine_net
 
-  legacy_db:
-    image: mariadb:10.6
-    restart: always
-    environment:
-      - MYSQL_ROOT_PASSWORD=root
-      - MYSQL_DATABASE=legacy_goldmine
-    volumes:
-      - ../docker/volumes/backup/sqldumps/2021-06-29.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - goldmine_net
-
   backend:
     build:
       context: ./backend
@@ -39,14 +26,12 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
-      - ./backend/media/lectures:/app/media/lectures:ro
     ports:
       - "8000:8000"
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev_secret_key_123
-      - DJANGO_SKIP_MIGRATIONS=0
-      - SEED_DEV_DATA=1
+      - DJANGO_SKIP_MIGRATIONS=1
       - POSTGRES_USER=goldmine_user
       - POSTGRES_PASSWORD=goldmine_dev_secret
       - POSTGRES_DB=goldmine_v2
@@ -55,16 +40,35 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - LEGACY_DB_NAME=legacy_goldmine
-      - LEGACY_DB_USER=root
-      - LEGACY_DB_PASSWORD=root
-      - LEGACY_DB_HOST=legacy_db
-      - LEGACY_DB_PORT=3306
-      - RUN_LEGACY_MIGRATION=0
     depends_on:
-      - db
-      - redis
-      - legacy_db
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - goldmine_net
+
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: python manage.py migrate --noinput
+    environment:
+      - DJANGO_DEBUG=1
+      - DJANGO_SECRET_KEY=dev_secret_key_123
+      - POSTGRES_USER=goldmine_user
+      - POSTGRES_PASSWORD=goldmine_dev_secret
+      - POSTGRES_DB=goldmine_v2
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+    depends_on:
+      db:
+        condition: service_started
     networks:
       - goldmine_net
 
@@ -75,11 +79,11 @@ services:
     working_dir: /app
     volumes:
       - ./backend:/app
-      - ./backend/media/lectures:/app/media/lectures:ro
     command: python manage.py rqworker default
     environment:
       - DJANGO_DEBUG=1
       - DJANGO_SECRET_KEY=dev_secret_key_123
+      - DJANGO_SKIP_MIGRATIONS=1
       - POSTGRES_USER=goldmine_user
       - POSTGRES_PASSWORD=goldmine_dev_secret
       - POSTGRES_DB=goldmine_v2
@@ -88,16 +92,38 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
-      - LEGACY_DB_NAME=legacy_goldmine
-      - LEGACY_DB_USER=root
-      - LEGACY_DB_PASSWORD=root
-      - LEGACY_DB_HOST=legacy_db
-      - LEGACY_DB_PORT=3306
-      - RUN_LEGACY_MIGRATION=0
     depends_on:
-      - db
-      - redis
-      - legacy_db
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - goldmine_net
+
+  seed_demo:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    profiles:
+      - seed
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: python manage.py seed_dev_data
+    environment:
+      - DJANGO_DEBUG=1
+      - DJANGO_SECRET_KEY=dev_secret_key_123
+      - POSTGRES_USER=goldmine_user
+      - POSTGRES_PASSWORD=goldmine_dev_secret
+      - POSTGRES_DB=goldmine_v2
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - SEED_DEV_RENDER=${SEED_DEV_RENDER:-1}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks:
       - goldmine_net
 

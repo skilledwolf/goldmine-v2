@@ -10,8 +10,11 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 from ninja import Router, Schema
 from ninja.errors import HttpError
+import django_rq
 
-from .models import UploadJob, Lecture, SemesterGroup, Series
+from .models import UploadJob, Lecture, SemesterGroup, Series, Exercise, RenderJob
+from .render_worker import run_render_job
+from .tex_utils import extract_exercise_titles, extract_series_title, read_tex
 
 
 uploads_router = Router()
@@ -62,6 +65,7 @@ class UploadCommitSeriesSchema(Schema):
 
 class UploadCommitSchema(Schema):
     overwrite: bool = False
+    render: bool = True
     series: list[UploadCommitSeriesSchema] = []
 
 
@@ -386,6 +390,7 @@ def commit_upload(request, job_id: int, payload: UploadCommitSchema):
     dest_root.mkdir(parents=True, exist_ok=True)
     shutil.copytree(root_dir, dest_root, dirs_exist_ok=True)
 
+    render_series_ids: list[int] = []
     with transaction.atomic():
         sem, _ = SemesterGroup.objects.get_or_create(
             lecture=job.lecture,
@@ -403,7 +408,7 @@ def commit_upload(request, job_id: int, payload: UploadCommitSchema):
         sem.save(update_fields=["professors", "assistants", "fs_path"])
 
         for s in series_list:
-            Series.objects.update_or_create(
+            series_obj, _ = Series.objects.get_or_create(
                 semester_group=sem,
                 number=s.number,
                 defaults={
@@ -413,8 +418,90 @@ def commit_upload(request, job_id: int, payload: UploadCommitSchema):
                     "solution_file": s.solution_file or "",
                 },
             )
+            update_fields: list[str] = []
+            if s.title and s.title.strip() and series_obj.title != s.title:
+                series_obj.title = s.title
+                update_fields.append("title")
+            for field, value in (
+                ("tex_file", s.tex_file or ""),
+                ("pdf_file", s.pdf_file or ""),
+                ("solution_file", s.solution_file or ""),
+            ):
+                if getattr(series_obj, field) != value:
+                    setattr(series_obj, field, value)
+                    update_fields.append(field)
+            if update_fields:
+                series_obj.save(update_fields=update_fields)
+
+            if series_obj.tex_file:
+                render_series_ids.append(series_obj.id)
+
+            tex_source = ""
+            if series_obj.tex_file:
+                tex_path = dest_root / series_obj.tex_file
+                if tex_path.is_file():
+                    tex_source = read_tex(tex_path)
+
+            if tex_source:
+                inferred_title = extract_series_title(tex_source)
+                if inferred_title and not (series_obj.title or "").strip():
+                    series_obj.title = inferred_title
+                    series_obj.save(update_fields=["title"])
+
+            if not series_obj.exercises.exists() and tex_source:
+                titles = extract_exercise_titles(tex_source)
+                for idx, title in enumerate(titles, 1):
+                    ex, _ = Exercise.all_objects.get_or_create(
+                        series=series_obj,
+                        number=idx,
+                        defaults={
+                            "title": title,
+                            "text_content": title,
+                            "search_text": title,
+                        },
+                    )
+                    if ex.is_deleted:
+                        ex.restore()
+                    if not ex.title:
+                        ex.title = title
+                        ex.save(update_fields=["title"])
 
     job.status = UploadJob.Status.IMPORTED
     job.save(update_fields=["status", "updated_at"])
 
-    return {"status": "imported", "semester_group_id": sem.id}
+    render_job_id: int | None = None
+    render_enqueued = False
+    render_error = ""
+
+    if payload.render and render_series_ids:
+        unique_series_ids = sorted(set(render_series_ids))
+        try:
+            render_job = RenderJob.objects.create(
+                user=request.user,
+                status=RenderJob.Status.QUEUED,
+                scope=RenderJob.Scope.SERIES,
+                series_ids=unique_series_ids,
+                force=False,
+                total_count=len(unique_series_ids),
+            )
+            render_job_id = render_job.id
+            try:
+                queue = django_rq.get_queue("default")
+                queue.enqueue(run_render_job, render_job.id, job_id=f"render-job-{render_job.id}")
+                render_enqueued = True
+            except Exception as exc:  # noqa: BLE001
+                render_error = str(exc)
+                RenderJob.objects.filter(id=render_job.id).update(
+                    status=RenderJob.Status.FAILED,
+                    error_message=f"Enqueue failed: {exc}",
+                )
+        except Exception as exc:  # noqa: BLE001
+            render_error = str(exc)
+
+    return {
+        "status": "imported",
+        "semester_group_id": sem.id,
+        "render_job_id": render_job_id,
+        "render_enqueued": render_enqueued,
+        "render_error": render_error,
+    }

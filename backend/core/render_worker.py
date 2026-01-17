@@ -154,6 +154,14 @@ def _run_command_for_job(
     rc = proc.wait()
     job.return_code = rc
 
+    # Preserve the latest counters even if the final incremental flush was rate-limited.
+    processed_count = job.processed_count
+    rendered_count = job.rendered_count
+    skipped_count = job.skipped_count
+    failed_count = job.failed_count
+    current_series_id = job.current_series_id
+    total_count = job.total_count
+
     # Refresh status in case cancellation was requested while the process was running.
     job = RenderJob.objects.get(id=job_id)
     finished_at = timezone.now()
@@ -163,6 +171,12 @@ def _run_command_for_job(
             pid=None,
             return_code=rc,
             output_log=state.log,
+            total_count=total_count,
+            processed_count=processed_count,
+            rendered_count=rendered_count,
+            skipped_count=skipped_count,
+            failed_count=failed_count,
+            current_series_id=current_series_id,
             updated_at=finished_at,
         )
         return
@@ -171,7 +185,7 @@ def _run_command_for_job(
     if final_status != RenderJob.Status.CANCELLED:
         if rc != 0:
             final_status = RenderJob.Status.FAILED
-        elif job.failed_count > 0:
+        elif failed_count > 0:
             final_status = RenderJob.Status.FAILED
         else:
             final_status = RenderJob.Status.SUCCEEDED
@@ -182,6 +196,12 @@ def _run_command_for_job(
         pid=None,
         return_code=rc,
         output_log=state.log,
+        total_count=total_count,
+        processed_count=processed_count,
+        rendered_count=rendered_count,
+        skipped_count=skipped_count,
+        failed_count=failed_count,
+        current_series_id=current_series_id,
         updated_at=finished_at,
     )
 

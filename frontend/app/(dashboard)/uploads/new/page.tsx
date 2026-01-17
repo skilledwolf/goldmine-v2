@@ -38,6 +38,14 @@ type UploadResponse = {
   report: UploadReport;
 };
 
+type UploadCommitResponse = {
+  status: string;
+  semester_group_id: number;
+  render_job_id?: number | null;
+  render_enqueued?: boolean;
+  render_error?: string;
+};
+
 function getCookie(name: string): string | undefined {
   if (typeof document === 'undefined') return undefined;
   const value = `; ${document.cookie}`;
@@ -150,7 +158,7 @@ export default function UploadsPage() {
     setImporting(true);
     setImportStatus(null);
     try {
-      await apiFetch(`/uploads/${jobId}/commit`, {
+      const result = await apiFetch<UploadCommitResponse>(`/uploads/${jobId}/commit`, {
         method: 'POST',
         body: JSON.stringify({
           overwrite,
@@ -163,7 +171,16 @@ export default function UploadsPage() {
           })),
         }),
       });
-      setImportStatus('Import completed successfully.');
+      let message = 'Import completed successfully.';
+      if (result?.render_job_id) {
+        message += result.render_enqueued
+          ? ` Render job queued (#${result.render_job_id}).`
+          : ` Render job created (#${result.render_job_id}).`;
+      }
+      if (result?.render_error) {
+        message += ` Render enqueue failed: ${result.render_error}`;
+      }
+      setImportStatus(message);
     } catch (err: unknown) {
       setImportStatus(err instanceof Error ? err.message : 'Import failed');
     } finally {

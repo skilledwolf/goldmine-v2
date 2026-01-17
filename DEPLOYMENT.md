@@ -55,6 +55,42 @@ If you prefer to build the code on the server:
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+Helper script (optional):
+
+```bash
+./scripts/gm.sh prod up
+```
+
+## Migrations
+Production runs Django schema migrations via the one-off `migrate` service in `docker-compose.prod.yml`.
+To rerun manually:
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm migrate
+```
+
+## Optional: demo seed (staging / smoke tests)
+To load the demo lecture into a fresh database:
+
+```bash
+docker compose -f docker-compose.prod.yml --profile seed run --rm seed_demo
+```
+
+Set `SEED_DEV_RENDER=0` to skip LaTeXML rendering.
+
+## Optional: legacy import (one-time)
+Legacy migration is intentionally **decoupled** from the production stack. It is meant as a one-time migration step after the app is up.
+
+Requirements:
+- `legacy/sql/legacy.sql`
+- legacy lecture assets in `legacy/lectures/` (or otherwise mounted into `/app/media/lectures`)
+
+Run the import:
+
+```bash
+./legacy/migrate.sh prod
+```
+
 ## 4) Create a superuser
 
 ```bash
@@ -127,4 +163,4 @@ cat backups/media.tgz | docker compose -f docker-compose.prod.yml exec -T backen
   'tar -xzf - -C /app/media'
 ```
 
-4) Start services and run migrations if needed (`docker compose -f docker-compose.prod.yml up -d`).
+4) Start services (`docker compose -f docker-compose.prod.yml up -d`). If the schema needs updating, rerun `docker compose -f docker-compose.prod.yml run --rm migrate`.

@@ -59,3 +59,5 @@ ENV/
 *.sqlite3-journal
 backend/staticfiles/
 backend/media/
+legacy/lectures/
+legacy/sql/legacy.sql

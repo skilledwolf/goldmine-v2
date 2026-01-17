@@ -12,6 +12,7 @@ from django.core.management.base import BaseCommand
 from django.db import connection, transaction
 
 from core.models import Exercise, Lecture, SemesterGroup, Series
+from core.tex_utils import extract_exercise_titles, extract_series_title, read_tex
 from core.uploads_api import _detect_series
 
 
@@ -122,39 +123,6 @@ def _ensure_demo_pdfs(root: Path) -> None:
             )
 
 
-def _read_tex(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return path.read_text(encoding="latin-1")
-
-
-def _extract_series_title(tex: str) -> str:
-    match = re.search(r"\\section\*?\s*\{([^}]*)\}", tex)
-    if match:
-        return match.group(1).strip()
-    return ""
-
-
-def _extract_exercise_titles(tex: str) -> list[str]:
-    titles = [m.group(1).strip() for m in re.finditer(r"\\exercise\s*\{([^}]*)\}", tex)]
-    if titles:
-        return titles
-    titles = [m.group(1).strip() for m in re.finditer(r"\\subsection\*?\s*\{([^}]*)\}", tex)]
-    if titles:
-        return titles
-
-    count = len(re.findall(r"\\begin\{exercise\}", tex, re.IGNORECASE))
-    if count:
-        return [f"Exercise {idx}" for idx in range(1, count + 1)]
-
-    count = len(re.findall(r"\\begin\{problem\}", tex, re.IGNORECASE))
-    if count:
-        return [f"Exercise {idx}" for idx in range(1, count + 1)]
-
-    return []
-
-
 class Command(BaseCommand):
     help = "Seed example course content for local development using demo TeX uploads."
 
@@ -222,8 +190,8 @@ class Command(BaseCommand):
                 created_series: list[Series] = []
                 for entry in report.series:
                     tex_path = dest_root / entry.tex_file if entry.tex_file else None
-                    tex_source = _read_tex(tex_path) if tex_path and tex_path.exists() else ""
-                    title = _extract_series_title(tex_source)
+                    tex_source = read_tex(tex_path) if tex_path and tex_path.exists() else ""
+                    title = extract_series_title(tex_source)
 
                     series, series_created = Series.all_objects.get_or_create(
                         semester_group=semester_group,
@@ -247,7 +215,7 @@ class Command(BaseCommand):
                     series.save(update_fields=["title", "tex_file", "pdf_file", "solution_file"])
                     created_series.append(series)
 
-                    exercise_titles = _extract_exercise_titles(tex_source)
+                    exercise_titles = extract_exercise_titles(tex_source)
                     if not exercise_titles:
                         exercise_titles = [f"Exercise {idx}" for idx in range(1, 3)]
 

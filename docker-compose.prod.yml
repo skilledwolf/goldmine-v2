@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   db:
     image: postgres:16-alpine
@@ -29,6 +27,7 @@ services:
     environment:
       - DJANGO_DEBUG=0
       - DJANGO_USE_GUNICORN=1
+      - DJANGO_SKIP_MIGRATIONS=1
       - DJANGO_COLLECTSTATIC=1
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
       - ALLOWED_HOSTS=${ALLOWED_HOSTS}
@@ -48,8 +47,59 @@ services:
     volumes:
       - media_data:/app/media
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - goldmine_net
+
+  migrate:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    working_dir: /app
+    command: python manage.py migrate --noinput
+    environment:
+      - DJANGO_DEBUG=0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - POSTGRES_USER=${POSTGRES_USER:-goldmine_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_DB=${POSTGRES_DB:-goldmine_v2}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+    depends_on:
+      db:
+        condition: service_started
+    networks:
+      - goldmine_net
+
+  seed_demo:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    profiles:
+      - seed
+    working_dir: /app
+    command: python manage.py seed_dev_data
+    environment:
+      - DJANGO_DEBUG=0
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY}
+      - POSTGRES_USER=${POSTGRES_USER:-goldmine_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-change_me}
+      - POSTGRES_DB=${POSTGRES_DB:-goldmine_v2}
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - SEED_DEV_RENDER=${SEED_DEV_RENDER:-0}
+    volumes:
+      - media_data:/app/media
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     networks:
       - goldmine_net
 
@@ -77,8 +127,12 @@ services:
     volumes:
       - media_data:/app/media
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      migrate:
+        condition: service_completed_successfully
     networks:
       - goldmine_net
 

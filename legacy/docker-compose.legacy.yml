@@ -1,0 +1,14 @@
+services:
+  legacy_db:
+    image: mariadb:10.6
+    profiles:
+      - legacy
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${LEGACY_DB_PASSWORD:-root}
+      - MYSQL_DATABASE=${LEGACY_DB_NAME:-legacy_goldmine}
+    volumes:
+      - ./legacy/sql/legacy.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - goldmine_net
+
