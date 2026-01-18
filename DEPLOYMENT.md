@@ -78,19 +78,6 @@ docker compose -f docker-compose.prod.yml --profile seed run --rm seed_demo
 
 Set `SEED_DEV_RENDER=0` to skip LaTeXML rendering.
 
-## Optional: legacy import (one-time)
-Legacy migration is intentionally **decoupled** from the production stack. It is meant as a one-time migration step after the app is up.
-
-Requirements:
-- `legacy/sql/legacy.sql`
-- legacy lecture assets in `legacy/lectures/` (or otherwise mounted into `/app/media/lectures`)
-
-Run the import:
-
-```bash
-./legacy/migrate.sh prod
-```
-
 ## 4) Create a superuser
 
 ```bash

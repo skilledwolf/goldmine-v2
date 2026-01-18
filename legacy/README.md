@@ -2,6 +2,8 @@
 
 Legacy migration is intentionally **decoupled** from the main app setup.
 
+This folder contains one-off tooling for migrating from a private/proprietary legacy Goldmine instance. If you do not have that legacy database/files, you can ignore everything in `legacy/`.
+
 ## Inputs
 - SQL dump: `legacy/sql/legacy.sql`
 - Legacy lecture tree: `legacy/lectures/` (must mirror legacy `fs_path`, e.g. `QM1/2014HS/...`)
@@ -30,4 +32,3 @@ Run the same script against `docker-compose.prod.yml`:
 ./scripts/gm.sh prod up
 ./legacy/migrate.sh prod
 ```
-

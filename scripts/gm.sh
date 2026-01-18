@@ -30,7 +30,6 @@ Prod commands:
   status          Show prod services
 
 Notes:
-  - For legacy imports, use the decoupled script: ./legacy/migrate.sh dev|prod
   - To auto-create a dev admin, set DJANGO_SUPERUSER_USERNAME + DJANGO_SUPERUSER_PASSWORD (optional DJANGO_SUPERUSER_EMAIL).
   - For backwards compatibility, GM_ADMIN_USERNAME/GM_ADMIN_PASSWORD/GM_ADMIN_EMAIL are also supported.
 USAGE
