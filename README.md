@@ -3,7 +3,7 @@
 Goldmine V2 is a web app for managing university lecture materials (exercise sheets, solutions, and related metadata). The current version is built strictly as an internal database for teaching assistants and professors to organize content and keep course materials consistent.
 
 ## Project status
-Goldmine V2 has not been battle-tested in a production setting and is currently maintained as a private/internal project. If you want to deploy it or seriously get involved in development, please reach out to the author first (see “Author” below).
+Goldmine V2 has not been battle-tested in a production setting and is currently maintained as a private/internal project. If you want to deploy it or seriously get involved in development, feel free to reach out and/or create PRs.
 
 ## Features
 - Lecture catalog with semesters and series (exercise sheets)
@@ -65,10 +65,6 @@ Create a local admin user:
 docker compose exec backend python manage.py createsuperuser
 ```
 
-Render / other non-interactive deploys:
-- Set backend env vars `DJANGO_SUPERUSER_USERNAME` + `DJANGO_SUPERUSER_PASSWORD` (optional `DJANGO_SUPERUSER_EMAIL`)
-- Redeploy/restart the backend (it will create/ensure that superuser at startup)
-
 Seed demo data (optional):
 
 ```bash
@@ -100,6 +96,13 @@ See `legacy/README.md` for details.
 
 ## Production
 See `DEPLOYMENT.md` for Docker + Caddy deployment and backup guidance.
+
+### Render demo deployment (optional)
+This repo also ships a lightweight Render Blueprint in `render.yaml` for “one-click” demo deployments (not intended as a full production setup).
+
+- Deploys Postgres + Redis + backend + frontend
+- Frontend proxies `/api`, `/admin`, `/static` to the backend so auth cookies/CSRF work on a single origin
+- If you don’t have shell access (e.g. Render free tier), set `DJANGO_SUPERUSER_USERNAME` + `DJANGO_SUPERUSER_PASSWORD` (optional `DJANGO_SUPERUSER_EMAIL`) on the backend service and redeploy/restart
 
 ## Configuration
 - Example backend env file: `backend/.env.example` (for local, non-Docker usage)
