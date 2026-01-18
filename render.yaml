@@ -1,0 +1,74 @@
+# Render Blueprint for Goldmine V2
+#
+# Notes:
+# - The frontend proxies `/api`, `/admin`, `/media`, `/static` to the backend via Next.js rewrites.
+# - This keeps everything on a single origin (no cross-site cookie/CSRF issues).
+# - For a demo-friendly setup, the backend serves `/media` and `/static` via Django (see `DJANGO_SERVE_MEDIA`).
+#
+# After deploy, create an admin user:
+# - Open the backend service shell in Render and run:
+#   `python manage.py createsuperuser`
+
+databases:
+  - name: goldmine-v2-db
+    plan: free
+    databaseName: goldmine_v2
+    user: goldmine_user
+
+services:
+  - type: keyvalue
+    name: goldmine-v2-redis
+    plan: free
+
+  - type: web
+    name: goldmine-v2-backend
+    runtime: docker
+    dockerContext: backend
+    dockerfilePath: backend/Dockerfile.prod
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "0"
+      - key: DJANGO_USE_GUNICORN
+        value: "1"
+      - key: DJANGO_SECURE_SSL_REDIRECT
+        value: "false"
+      - key: DJANGO_BEHIND_PROXY
+        value: "1"
+      - key: DJANGO_COLLECTSTATIC
+        value: "1"
+      - key: DJANGO_SERVE_MEDIA
+        value: "1"
+      - key: START_RQWORKER
+        value: "1"
+      - key: ALLOWED_HOSTS
+        value: "localhost,127.0.0.1,.onrender.com"
+      - key: CSRF_TRUSTED_ORIGINS
+        value: "https://*.onrender.com"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: goldmine-v2-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: goldmine-v2-redis
+          type: keyvalue
+          property: connectionString
+
+  - type: web
+    name: goldmine-v2-frontend
+    runtime: docker
+    dockerContext: frontend
+    dockerfilePath: frontend/Dockerfile.prod
+    autoDeploy: true
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: "/api"
+      - key: API_PROXY_HOSTPORT
+        fromService:
+          name: goldmine-v2-backend
+          type: web
+          property: hostport

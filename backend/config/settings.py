@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 import os
 from pathlib import Path
+from urllib.parse import parse_qs, unquote, urlparse
 
 from dotenv import load_dotenv
 
@@ -131,6 +132,28 @@ DATABASES = {
     }
 }
 
+# Support common `DATABASE_URL` style configuration (e.g. Render Postgres connection strings).
+_database_url = os.getenv("DATABASE_URL")
+if _database_url:
+    parsed = urlparse(_database_url)
+    if parsed.scheme in {"postgres", "postgresql"}:
+        query = parse_qs(parsed.query)
+        sslmode = (query.get("sslmode") or [None])[0]
+
+        options: dict[str, str] = {}
+        if sslmode:
+            options["sslmode"] = sslmode
+
+        DATABASES["default"] = {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": (parsed.path or "").lstrip("/") or os.getenv("POSTGRES_DB", "goldmine_v2"),
+            "USER": unquote(parsed.username or "") or os.getenv("POSTGRES_USER", "goldmine_user"),
+            "PASSWORD": unquote(parsed.password or "") or os.getenv("POSTGRES_PASSWORD", "goldmine_dev_secret"),
+            "HOST": parsed.hostname or os.getenv("POSTGRES_HOST", "db"),
+            "PORT": str(parsed.port or 5432),
+            **({"OPTIONS": options} if options else {}),
+        }
+
 # Background job queue (Redis)
 RQ_QUEUES = {
     "default": {
@@ -140,6 +163,29 @@ RQ_QUEUES = {
         "DEFAULT_TIMEOUT": int(os.getenv("REDIS_DEFAULT_TIMEOUT", "600")),
     }
 }
+
+# Support `REDIS_URL` configuration (e.g. Render Key Value connection strings).
+_redis_url = os.getenv("REDIS_URL")
+if _redis_url:
+    parsed = urlparse(_redis_url)
+    redis_db_raw = (parsed.path or "").lstrip("/")
+    try:
+        redis_db = int(redis_db_raw) if redis_db_raw else 0
+    except ValueError:
+        redis_db = 0
+
+    RQ_QUEUES["default"].update(
+        {
+            "HOST": parsed.hostname or RQ_QUEUES["default"]["HOST"],
+            "PORT": int(parsed.port or RQ_QUEUES["default"]["PORT"]),
+            "DB": redis_db,
+            **(
+                {"PASSWORD": unquote(parsed.password or "")}
+                if parsed.password is not None
+                else {}
+            ),
+        }
+    )
 
 # CORS & CSRF
 CORS_ALLOWED_ORIGINS = env_list(

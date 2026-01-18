@@ -1,3 +1,5 @@
+import os
+
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -10,5 +12,9 @@ urlpatterns = [
 ]
 
 if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+if not settings.DEBUG and os.getenv("DJANGO_SERVE_MEDIA", "0").strip().lower() in {"1", "true", "yes", "on"}:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
