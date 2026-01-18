@@ -32,6 +32,14 @@ services:
     envVars:
       - key: DJANGO_SECRET_KEY
         generateValue: true
+      # Optional (but recommended for demo deploys without shell access):
+      # Provide these once and the backend will create/ensure a superuser at startup.
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
       - key: DJANGO_DEBUG
         value: "0"
       - key: DJANGO_USE_GUNICORN

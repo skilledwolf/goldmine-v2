@@ -42,6 +42,54 @@ else:
 PY
 }
 
+bootstrap_superuser() {
+  python - <<'PY'
+import os
+
+username = os.getenv("DJANGO_SUPERUSER_USERNAME", "").strip()
+password = os.getenv("DJANGO_SUPERUSER_PASSWORD", "")
+email = os.getenv("DJANGO_SUPERUSER_EMAIL", "").strip()
+
+if not username or not password:
+    print("Superuser bootstrap skipped (set DJANGO_SUPERUSER_USERNAME and DJANGO_SUPERUSER_PASSWORD).")
+    raise SystemExit(0)
+
+import django
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+django.setup()
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+user, created = User.objects.get_or_create(
+    username=username,
+    defaults={"email": email} if email else {},
+)
+
+updated = False
+if not user.is_staff:
+    user.is_staff = True
+    updated = True
+if not user.is_superuser:
+    user.is_superuser = True
+    updated = True
+if email and user.email != email:
+    user.email = email
+    updated = True
+
+if created:
+    user.set_password(password)
+    updated = True
+
+if updated:
+    user.save()
+
+print(("Created" if created else "Ensured") + f" superuser: {username}")
+PY
+}
+
 wait_for_postgres
 
 if [ "$#" -gt 0 ]; then
@@ -51,6 +99,8 @@ fi
 if [ "${DJANGO_SKIP_MIGRATIONS:-0}" != "1" ]; then
   python manage.py migrate --noinput
 fi
+
+bootstrap_superuser
 
 if [ "${SEED_DEV_DATA:-0}" != "0" ]; then
   python manage.py seed_dev_data

@@ -65,6 +65,10 @@ Create a local admin user:
 docker compose exec backend python manage.py createsuperuser
 ```
 
+Render / other non-interactive deploys:
+- Set backend env vars `DJANGO_SUPERUSER_USERNAME` + `DJANGO_SUPERUSER_PASSWORD` (optional `DJANGO_SUPERUSER_EMAIL`)
+- Redeploy/restart the backend (it will create/ensure that superuser at startup)
+
 Seed demo data (optional):
 
 ```bash

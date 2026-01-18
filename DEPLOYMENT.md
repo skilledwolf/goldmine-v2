@@ -97,6 +97,8 @@ Run the import:
 docker compose -f docker-compose.prod.yml exec backend python manage.py createsuperuser
 ```
 
+If you can’t run interactive commands (e.g. Render free tier), set backend env vars `DJANGO_SUPERUSER_USERNAME` + `DJANGO_SUPERUSER_PASSWORD` (optional `DJANGO_SUPERUSER_EMAIL`) and redeploy/restart the backend service.
+
 ## 5) Backups
 A backup script is provided in `scripts/backup.sh`. You can run it manually or add it to crontab.
 
