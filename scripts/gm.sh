@@ -18,7 +18,7 @@ Dev commands:
   empty           reset + up
   seed-demo       Seed demo data into dev DB
   demo            empty + seed-demo
-  ensure-admin    Create/update dev admin user (admin/admin)
+  ensure-admin    Create/update dev admin user (prompt or env vars)
   status          Show dev services
 
 Prod commands:
@@ -31,7 +31,8 @@ Prod commands:
 
 Notes:
   - For legacy imports, use the decoupled script: ./legacy/migrate.sh dev|prod
-  - Set SKIP_ADMIN=1 to skip creating admin/admin in dev modes that start the stack.
+  - To auto-create a dev admin, set DJANGO_SUPERUSER_USERNAME + DJANGO_SUPERUSER_PASSWORD (optional DJANGO_SUPERUSER_EMAIL).
+  - For backwards compatibility, GM_ADMIN_USERNAME/GM_ADMIN_PASSWORD/GM_ADMIN_EMAIL are also supported.
 USAGE
 }
 
@@ -45,10 +46,50 @@ run() {
 }
 
 dev_ensure_admin() {
+  local allow_prompt="${1:-0}"
   if [ "${SKIP_ADMIN:-0}" = "1" ]; then
     return 0
   fi
-  run $DEV_COMPOSE run --rm --no-deps -T backend python manage.py shell -c 'from django.contrib.auth import get_user_model; User=get_user_model(); u, created = User.objects.get_or_create(username="admin", defaults={"email":"admin@example.com"}); u.email = u.email or "admin@example.com"; u.is_staff = True; u.is_superuser = True; u.set_password("admin"); u.save(); print(("created" if created else "updated") + " superuser: " + u.username)'
+
+  local username="${DJANGO_SUPERUSER_USERNAME:-${GM_ADMIN_USERNAME:-}}"
+  local password="${DJANGO_SUPERUSER_PASSWORD:-${GM_ADMIN_PASSWORD:-}}"
+  local email="${DJANGO_SUPERUSER_EMAIL:-${GM_ADMIN_EMAIL:-admin@example.com}}"
+
+  if [ -z "${username}" ] || [ -z "${password}" ]; then
+    if [ "${allow_prompt}" = "1" ] && [ -t 0 ]; then
+      if [ -z "${username}" ]; then
+        read -r -p "Admin username [admin]: " username
+        username="${username:-admin}"
+      fi
+      if [ -z "${password}" ]; then
+        read -r -s -p "Admin password: " password
+        echo
+      fi
+      if [ -z "${email}" ]; then
+        read -r -p "Admin email [admin@example.com]: " email
+        email="${email:-admin@example.com}"
+      fi
+    fi
+  fi
+
+  if [ -z "${username}" ] || [ -z "${password}" ]; then
+    if [ "${allow_prompt}" = "1" ]; then
+      echo "Dev admin not created: missing credentials." >&2
+      echo "Set DJANGO_SUPERUSER_USERNAME + DJANGO_SUPERUSER_PASSWORD (optional DJANGO_SUPERUSER_EMAIL) and rerun." >&2
+      echo "Alternatively run: docker compose exec backend python manage.py createsuperuser" >&2
+      return 2
+    fi
+    return 0
+  fi
+
+  DJANGO_SUPERUSER_USERNAME="${username}" \
+  DJANGO_SUPERUSER_PASSWORD="${password}" \
+  DJANGO_SUPERUSER_EMAIL="${email}" \
+  run $DEV_COMPOSE run --rm --no-deps -T \
+    -e DJANGO_SUPERUSER_USERNAME \
+    -e DJANGO_SUPERUSER_PASSWORD \
+    -e DJANGO_SUPERUSER_EMAIL \
+    backend python manage.py shell -c 'from django.contrib.auth import get_user_model; import os; User=get_user_model(); username=os.environ["DJANGO_SUPERUSER_USERNAME"]; password=os.environ["DJANGO_SUPERUSER_PASSWORD"]; email=os.environ.get("DJANGO_SUPERUSER_EMAIL","admin@example.com"); u, created = User.objects.get_or_create(username=username, defaults={"email": email}); u.email = email or u.email or "admin@example.com"; u.is_staff = True; u.is_superuser = True; u.set_password(password); u.save(); print(("created" if created else "updated") + " superuser: " + u.username)'
 }
 
 dev_cmd() {
@@ -57,7 +98,7 @@ dev_cmd() {
   case "$cmd" in
     up)
       run $DEV_COMPOSE up -d --build
-      dev_ensure_admin
+      dev_ensure_admin 0
       ;;
     down)
       run $DEV_COMPOSE down --remove-orphans
@@ -78,7 +119,7 @@ dev_cmd() {
       "$0" dev seed-demo
       ;;
     ensure-admin)
-      dev_ensure_admin
+      dev_ensure_admin 1
       ;;
     status)
       run $DEV_COMPOSE ps
