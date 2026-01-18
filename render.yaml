@@ -1,7 +1,7 @@
 # Render Blueprint for Goldmine V2
 #
 # Notes:
-# - The frontend proxies `/api`, `/admin`, `/media`, `/static` to the backend via Next.js rewrites.
+# - The frontend proxies `/api`, `/admin`, `/media`, `/static` to the backend via Next.js route handlers.
 # - This keeps everything on a single origin (no cross-site cookie/CSRF issues).
 # - For a demo-friendly setup, the backend serves `/media` and `/static` via Django (see `DJANGO_SERVE_MEDIA`).
 #
@@ -47,7 +47,7 @@ services:
       - key: START_RQWORKER
         value: "1"
       - key: ALLOWED_HOSTS
-        value: "localhost,127.0.0.1,.onrender.com"
+        value: "localhost,127.0.0.1,.onrender.com,goldmine-v2-backend"
       - key: CSRF_TRUSTED_ORIGINS
         value: "https://*.onrender.com"
       - key: DATABASE_URL
@@ -70,8 +70,9 @@ services:
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: "/api"
-      - key: API_PROXY_BASE_URL
+      # Use Render's private network to reach the backend (avoids hardcoding the external URL).
+      - key: API_PROXY_HOSTPORT
         fromService:
           name: goldmine-v2-backend
           type: web
-          envVarKey: RENDER_EXTERNAL_URL
+          property: hostport
