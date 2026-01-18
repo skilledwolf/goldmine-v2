@@ -58,9 +58,6 @@ services:
 
   migrate:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
     working_dir: /app
     command: python manage.py migrate --noinput
     environment:
@@ -79,9 +76,6 @@ services:
 
   seed_demo:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
     profiles:
       - seed
     working_dir: /app
@@ -105,9 +99,6 @@ services:
 
   worker:
     image: ghcr.io/${GITHUB_REPOSITORY_OWNER:-wolft}/goldmine-v2-backend:latest
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
     working_dir: /app
     restart: always
     command: python manage.py rqworker default
@@ -159,6 +150,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - media_data:/srv/media:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

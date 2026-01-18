@@ -6,12 +6,15 @@
   }
 
   route /admin* {
+    @adminNoSlash path /admin
+    redir @adminNoSlash /admin/ 308
     reverse_proxy backend:8000
   }
 
-  route /media/* {
+  handle_path /media/* {
     header Cache-Control "public, max-age=2592000"
-    reverse_proxy backend:8000
+    root * /srv/media
+    file_server
   }
 
   route /static/* {
