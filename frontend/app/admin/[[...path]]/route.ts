@@ -6,7 +6,7 @@ export const runtime = 'nodejs';
 
 function getUpstreamPath(pathSegments?: string[]): string {
   if (!pathSegments || pathSegments.length === 0) return '/admin/';
-  return `/admin/${pathSegments.join('/')}`;
+  return `/admin/${pathSegments.join('/')}/`;
 }
 
 type RouteContext = {
