@@ -1,12 +1,14 @@
 import type { NextConfig } from "next";
 
-const apiProxyHostport = process.env.API_PROXY_HOSTPORT;
+const apiProxyBaseUrl = process.env.API_PROXY_BASE_URL || process.env.API_PROXY_HOSTPORT;
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    if (!apiProxyHostport) return [];
+    if (!apiProxyBaseUrl) return [];
 
-    const target = `http://${apiProxyHostport}`;
+    const target = apiProxyBaseUrl.startsWith("http://") || apiProxyBaseUrl.startsWith("https://")
+      ? apiProxyBaseUrl
+      : `http://${apiProxyBaseUrl}`;
 
     return [
       { source: "/api/:path*", destination: `${target}/api/:path*` },

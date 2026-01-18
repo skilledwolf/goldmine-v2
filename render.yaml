@@ -5,9 +5,9 @@
 # - This keeps everything on a single origin (no cross-site cookie/CSRF issues).
 # - For a demo-friendly setup, the backend serves `/media` and `/static` via Django (see `DJANGO_SERVE_MEDIA`).
 #
-# After deploy, create an admin user:
-# - Open the backend service shell in Render and run:
-#   `python manage.py createsuperuser`
+# After deploy, you need at least one user to log in.
+# - If your Render plan supports Shell/one-off commands, run: `python manage.py createsuperuser`
+# - If you're aiming for a true free-tier demo, we can add a small "bootstrap admin" env var flow.
 
 databases:
   - name: goldmine-v2-db
@@ -24,6 +24,7 @@ services:
   - type: web
     name: goldmine-v2-backend
     runtime: docker
+    plan: free
     dockerContext: backend
     dockerfilePath: backend/Dockerfile.prod
     healthCheckPath: /api/health
@@ -62,14 +63,15 @@ services:
   - type: web
     name: goldmine-v2-frontend
     runtime: docker
+    plan: free
     dockerContext: frontend
     dockerfilePath: frontend/Dockerfile.prod
     autoDeploy: true
     envVars:
       - key: NEXT_PUBLIC_API_URL
         value: "/api"
-      - key: API_PROXY_HOSTPORT
+      - key: API_PROXY_BASE_URL
         fromService:
           name: goldmine-v2-backend
           type: web
-          property: hostport
+          envVarKey: RENDER_EXTERNAL_URL
