@@ -106,9 +106,10 @@ export function SheetUploadDialog({
             // Refresh the lecture data
             mutate(lectureId ? `/lectures/${lectureId}` : null);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.message || 'An error occurred during upload');
+            const message = err instanceof Error && err.message ? err.message : 'An error occurred during upload';
+            setError(message);
         } finally {
             setIsLoading(false);
         }

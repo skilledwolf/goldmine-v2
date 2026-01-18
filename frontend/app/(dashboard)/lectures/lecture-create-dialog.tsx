@@ -11,10 +11,10 @@ import {
     DialogTitle,
     DialogTrigger,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { getApiBase, apiFetch } from '@/lib/api';
-import { mutate } from 'swr';
+	import { Input } from '@/components/ui/input';
+	import { Label } from '@/components/ui/label';
+	import { apiFetch } from '@/lib/api';
+	import { mutate } from 'swr';
 
 type LectureCreateDialogProps = {
     trigger?: React.ReactNode;
@@ -60,13 +60,14 @@ export function LectureCreateDialog({
 
             mutate('/lectures');
 
-        } catch (err: any) {
-            console.error(err);
-            setError(err.message || 'An error occurred');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+	        } catch (err: unknown) {
+	            console.error(err);
+	            const message = err instanceof Error && err.message ? err.message : 'An error occurred';
+	            setError(message);
+	        } finally {
+	            setIsLoading(false);
+	        }
+	    };
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>

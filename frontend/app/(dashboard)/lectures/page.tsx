@@ -57,13 +57,14 @@ export default function LecturesPage() {
     e.stopPropagation();
     if (!confirm('Delete this lecture? It will be moved to Trash and can be restored.')) return;
 
-    try {
-      await apiFetch(`/lectures/${id}`, { method: 'DELETE' });
-      mutate();
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete lecture');
-    }
-  };
+	    try {
+	      await apiFetch(`/lectures/${id}`, { method: 'DELETE' });
+	      mutate();
+	    } catch (err: unknown) {
+	      const message = err instanceof Error && err.message ? err.message : 'Failed to delete lecture';
+	      alert(message);
+	    }
+	  };
 
   const renderLoading = () => (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

@@ -73,9 +73,10 @@ export function SemesterCreateDialog({
 
             mutate(`/lectures/${lectureId}`);
 
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error(err);
-            setError(err.message || 'An error occurred');
+            const message = err instanceof Error && err.message ? err.message : 'An error occurred';
+            setError(message);
         } finally {
             setIsLoading(false);
         }

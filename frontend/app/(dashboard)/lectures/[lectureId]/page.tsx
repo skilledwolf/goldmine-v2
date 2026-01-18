@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { addRecentItem } from '@/lib/recent';
 import { useApiSWR } from '@/lib/swr';
 import { useStarredLectures } from '@/lib/stars';
-import { Star, FileCheck, Upload, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Star, FileCheck, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useBreadcrumbs } from '@/components/layout/breadcrumbs-context';
 import { SheetUploadDialog } from './sheet-upload-dialog';
 import { useAuth } from '@/lib/auth';
@@ -114,8 +114,9 @@ export default function LectureDetailPage() {
     try {
       await apiFetch(`/semester_groups/${id}`, { method: 'DELETE' });
       if (lectureKey) mutate(lectureKey);
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete semester group');
+    } catch (err: unknown) {
+      const message = err instanceof Error && err.message ? err.message : 'Failed to delete semester group';
+      alert(message);
     }
   };
 
@@ -127,8 +128,9 @@ export default function LectureDetailPage() {
     try {
       await apiFetch(`/series-mgmt/series/${id}`, { method: 'DELETE' });
       if (lectureKey) mutate(lectureKey);
-    } catch (err: any) {
-      alert(err.message || 'Failed to delete series');
+    } catch (err: unknown) {
+      const message = err instanceof Error && err.message ? err.message : 'Failed to delete series';
+      alert(message);
     }
   };
 

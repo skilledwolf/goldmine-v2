@@ -106,25 +106,27 @@ export default function TrashPage() {
         [data, q]
     );
 
-    const handleRestore = async (type: 'lectures' | 'semester-groups' | 'series', id: number) => {
-        try {
-            await apiFetch(`/trash/${type}/${id}/restore`, { method: 'POST' });
-            mutate();
-        } catch (err: any) {
-            alert(err.message || 'Failed to restore item');
-        }
-    };
+	    const handleRestore = async (type: 'lectures' | 'semester-groups' | 'series', id: number) => {
+	        try {
+	            await apiFetch(`/trash/${type}/${id}/restore`, { method: 'POST' });
+	            mutate();
+	        } catch (err: unknown) {
+	            const message = err instanceof Error && err.message ? err.message : 'Failed to restore item';
+	            alert(message);
+	        }
+	    };
 
-    const handlePurge = async (type: 'lectures' | 'semester-groups' | 'series', id: number) => {
-        const confirmText = 'Permanently delete this item? This cannot be undone.';
-        if (!confirm(confirmText)) return;
-        try {
-            await apiFetch(`/trash/${type}/${id}/purge`, { method: 'POST' });
-            mutate();
-        } catch (err: any) {
-            alert(err.message || 'Failed to purge item');
-        }
-    };
+	    const handlePurge = async (type: 'lectures' | 'semester-groups' | 'series', id: number) => {
+	        const confirmText = 'Permanently delete this item? This cannot be undone.';
+	        if (!confirm(confirmText)) return;
+	        try {
+	            await apiFetch(`/trash/${type}/${id}/purge`, { method: 'POST' });
+	            mutate();
+	        } catch (err: unknown) {
+	            const message = err instanceof Error && err.message ? err.message : 'Failed to purge item';
+	            alert(message);
+	        }
+	    };
 
     if (isLoading) {
         return <div className="text-sm text-muted-foreground">Loading trash…</div>;

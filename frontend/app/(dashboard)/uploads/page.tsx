@@ -10,12 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 
-type UploadReport = {
-    root: string;
-    series: any[];
-    unassigned: string[];
-    warnings: string[];
-};
+	type UploadReport = {
+	    root: string;
+	    series: unknown[];
+	    unassigned: string[];
+	    warnings: string[];
+	};
 
 type UploadJob = {
     id: number;
