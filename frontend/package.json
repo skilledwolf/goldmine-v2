@@ -28,6 +28,7 @@
     "swr": "^2.3.8",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
+    "typescript": "^5",
     "zod": "^4.3.5"
   },
   "devDependencies": {
@@ -37,7 +38,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "tailwindcss": "^4"
   }
 }

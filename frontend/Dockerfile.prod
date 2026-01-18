@@ -27,4 +27,4 @@ COPY --from=build /app/next.config.ts ./next.config.ts
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start"]
+CMD ["npm", "run", "start", "--", "-H", "0.0.0.0"]
