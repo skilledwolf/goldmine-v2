@@ -19,6 +19,7 @@ services:
   - type: keyvalue
     name: goldmine-v2-redis
     plan: free
+    ipAllowList: []
 
   - type: web
     name: goldmine-v2-backend
