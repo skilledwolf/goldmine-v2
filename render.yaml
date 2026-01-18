@@ -3,7 +3,8 @@
 # Notes:
 # - The frontend proxies `/api`, `/admin`, `/media`, `/static` to the backend via Next.js route handlers.
 # - This keeps everything on a single origin (no cross-site cookie/CSRF issues).
-# - For a demo-friendly setup, the backend serves `/media` and `/static` via Django (see `DJANGO_SERVE_MEDIA`).
+# - The backend serves `/static` via WhiteNoise (requires `collectstatic`).
+# - `/media` should be backed by object storage for real deployments.
 #
 # After deploy, you need at least one user to log in.
 # - If your Render plan supports Shell/one-off commands, run: `python manage.py createsuperuser`
@@ -49,8 +50,6 @@ services:
       - key: DJANGO_BEHIND_PROXY
         value: "1"
       - key: DJANGO_COLLECTSTATIC
-        value: "1"
-      - key: DJANGO_SERVE_MEDIA
         value: "1"
       - key: START_RQWORKER
         value: "1"
